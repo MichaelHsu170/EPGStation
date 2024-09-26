@@ -64,7 +64,7 @@ namespace FileUtil {
     /**
      * ファイルサイズ取得
      * @param filePath: string
-     * @return Promise<number?
+     * @return Promise<number>
      * @throws FileIsNotFound
      */
     export const getFileSize = async (filePath: string): Promise<number> => {

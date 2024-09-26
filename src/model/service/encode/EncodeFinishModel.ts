@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
+import FileUtil from '../../../util/FileUtil';
 import IEncodeEvent, { FinishEncodeInfo } from '../../event/IEncodeEvent';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
@@ -61,19 +62,32 @@ export default class EncodeFinishModel implements IEncodeFinishModel {
                 // update file size
                 await this.ipc.recorded.updateVideoFileSize(info.videoFileId);
             } else {
-                // add encode file
-                const id = await this.ipc.recorded.addVideoFile({
-                    recordedId: info.recordedId,
-                    parentDirectoryName: info.parentDirName,
-                    filePath: info.filePath,
-                    type: 'encoded',
-                    name: info.mode,
-                });
-                newVideoFileId = id;
+                const fileSize = await FileUtil.getFileSize(info.fullOutputPath);
+                if (fileSize > 0) {
+                    // add encode file
+                    const id = await this.ipc.recorded.addVideoFile({
+                        recordedId: info.recordedId,
+                        parentDirectoryName: info.parentDirName,
+                        filePath: info.filePath,
+                        type: 'encoded',
+                        name: info.mode,
+                    });
+                    newVideoFileId = id;
+                } else {
+                    if (info.fullOutputPath !== null) {
+                        this.log.encode.info(`delete: ${info.fullOutputPath}`);
+                        await FileUtil.unlink(info.fullOutputPath).catch(err => {
+                            this.log.encode.error(`failed to delete ${info.fullOutputPath}`);
+                            this.log.encode.error(err);
+                        });
+                    }
+                    info.removeOriginal = false;
+                }
             }
         } catch (err: any) {
             this.log.encode.error('finish encode error');
             this.log.encode.error(err);
+            info.removeOriginal = false;
         }
 
         if (info.removeOriginal === true) {
