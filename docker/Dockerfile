@@ -42,13 +42,22 @@ FROM node:18-bookworm AS ffmpeg-builder
 ENV DEV="make gcc git g++ automake curl wget autoconf build-essential libass-dev libfreetype6-dev libsdl1.2-dev libtheora-dev libtool libva-dev libvdpau-dev libvorbis-dev libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev pkg-config texinfo zlib1g-dev"
 ENV FFMPEG_VERSION=7.0
 RUN apt-get update && \
-    apt-get -y install $DEV && \
+    apt-get -y install ${DEV} && \
     apt-get -y install yasm libx264-dev libmp3lame-dev libopus-dev libvpx-dev && \
     apt-get -y install libx265-dev libnuma-dev && \
     apt-get -y install libasound2 libass9 libvdpau1 libva-x11-2 libva-drm2 libxcb-shm0 libxcb-xfixes0 libxcb-shape0 libvorbisenc2 libtheora0 libaribb24-dev
+RUN VID=$(cat /etc/os-release | grep VERSION_ID | cut -d '=' -f 2 | cut -d '"' -f 2) && \
+    wget https://developer.download.nvidia.com/compute/cuda/repos/debian${VID}/x86_64/cuda-keyring_1.1-1_all.deb && \
+    dpkg -i cuda-keyring_1.1-1_all.deb && \
+    apt-get update && \
+    apt-get install -y cuda-toolkit && \
+    unset VID
+RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git && \
+    cd nv-codec-headers && make install && cd ..
 RUN mkdir ffmpeg_sources && \
     cd ffmpeg_sources && \
     curl -fsSL http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.bz2 | tar -xj --strip-components=1 && \
+    export PATH=/usr/local/cuda/bin:${PATH} && \
     ./configure \
       --prefix=/usr/local \
       --disable-shared \
@@ -66,8 +75,12 @@ RUN mkdir ffmpeg_sources && \
       --enable-version3 \
       --enable-libaribb24 \
       --enable-nonfree \
+      --enable-cuda-nvcc \
+      --enable-libnpp \
       --disable-debug \
       --disable-doc \
+      --extra-cflags=-I/usr/local/cuda/include \
+      --extra-ldflags=-L/usr/local/cuda/lib64 \
     && \
     make -j$(nproc) && \
     make install
@@ -83,6 +96,11 @@ COPY --from=server-builder /app /app/
 COPY --from=client-builder /app/client /app/client/
 COPY --from=ffmpeg-builder /usr/local/bin/ffmpeg /usr/local/bin/
 COPY --from=ffmpeg-builder /usr/local/bin/ffprobe /usr/local/bin/
+COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppig.so.12 /usr/lib/
+COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppicc.so.12 /usr/lib/
+COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppidei.so.12 /usr/lib/
+COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppif.so.12 /usr/lib/
+COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppc.so.12 /usr/lib/
 EXPOSE 8888
 WORKDIR /app
 ENTRYPOINT ["npm"]
