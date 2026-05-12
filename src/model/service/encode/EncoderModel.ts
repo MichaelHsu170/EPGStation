@@ -176,7 +176,6 @@ class EncoderModel implements IEncoderModel {
         this.log.encode.info(`outputFilePath: ${outputFilePath}`);
 
         // プロセスの生成
-        this.log.encode.debug(`encode cmd: ${encodeCmd.cmd}`);
         this.childProcess = await this.processManager.create({
             input: inputFilePath,
             output: outputFilePath,
