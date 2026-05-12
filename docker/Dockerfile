@@ -40,10 +40,10 @@ RUN npm run build-server --loglevel=info
 
 FROM node:18-bookworm AS ffmpeg-builder
 ENV DEV="make gcc git g++ automake curl wget autoconf build-essential libass-dev libfreetype6-dev libsdl1.2-dev libtheora-dev libtool libva-dev libvdpau-dev libvorbis-dev libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev pkg-config texinfo zlib1g-dev"
-ENV FFMPEG_VERSION=7.0
+ENV FFMPEG_VERSION=8.1.1
 RUN apt-get update && \
     apt-get -y install ${DEV} && \
-    apt-get -y install yasm libx264-dev libmp3lame-dev libopus-dev libvpx-dev && \
+    apt-get -y install nasm libx264-dev libmp3lame-dev libopus-dev libvpx-dev && \
     apt-get -y install libx265-dev libnuma-dev && \
     apt-get -y install libasound2 libass9 libvdpau1 libva-x11-2 libva-drm2 libxcb-shm0 libxcb-xfixes0 libxcb-shape0 libvorbisenc2 libtheora0 libaribb24-dev
 RUN VID=$(cat /etc/os-release | grep VERSION_ID | cut -d '=' -f 2 | cut -d '"' -f 2) && \
@@ -76,7 +76,6 @@ RUN mkdir ffmpeg_sources && \
       --enable-libaribb24 \
       --enable-nonfree \
       --enable-cuda-nvcc \
-      --enable-libnpp \
       --disable-debug \
       --disable-doc \
       --extra-cflags=-I/usr/local/cuda/include \
@@ -96,11 +95,6 @@ COPY --from=server-builder /app /app/
 COPY --from=client-builder /app/client /app/client/
 COPY --from=ffmpeg-builder /usr/local/bin/ffmpeg /usr/local/bin/
 COPY --from=ffmpeg-builder /usr/local/bin/ffprobe /usr/local/bin/
-COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppig.so.12 /usr/lib/
-COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppicc.so.12 /usr/lib/
-COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppidei.so.12 /usr/lib/
-COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppif.so.12 /usr/lib/
-COPY --from=ffmpeg-builder /usr/local/cuda/lib64/libnppc.so.12 /usr/lib/
 EXPOSE 8888
 WORKDIR /app
 ENTRYPOINT ["npm"]

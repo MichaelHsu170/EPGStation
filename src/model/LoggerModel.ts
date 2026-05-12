@@ -32,7 +32,7 @@ export default class LoggerModel implements ILoggerModel {
                     system: { appenders: ['system'], level: 'info' },
                     access: { appenders: ['access'], level: 'info' },
                     stream: { appenders: ['stream'], level: 'info' },
-                    encode: { appenders: ['system'], level: 'info' },
+                    encode: { appenders: ['encode'], level: 'info' },
                 },
             });
         } else {
@@ -41,7 +41,7 @@ export default class LoggerModel implements ILoggerModel {
                 const config: log4js.Configuration = yaml.load(str) as any;
                 log4js.configure(config);
             } catch (err: any) {
-                console.error('log file parse error');
+                console.error('log file parse error', err);
                 process.exit(1);
             }
         }
