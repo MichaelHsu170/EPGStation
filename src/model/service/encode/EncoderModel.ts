@@ -247,7 +247,11 @@ class EncoderModel implements IEncoderModel {
         // debug 用
         if (this.childProcess.stderr !== null) {
             this.childProcess.stderr.on('data', data => {
-                this.log.encode.debug(String(data));
+                for (const line of String(data).split('\n')) {
+                    if (line.trim()) {
+                        this.log.encode.debug(line);
+                    }
+                }
             });
         }
 
