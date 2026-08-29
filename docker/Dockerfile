@@ -40,7 +40,8 @@ RUN npm run build-server --loglevel=info
 
 FROM node:18-bookworm AS ffmpeg-builder
 ENV DEV="make gcc git g++ automake curl wget autoconf build-essential libass-dev libfreetype6-dev libsdl1.2-dev libtheora-dev libtool libva-dev libvdpau-dev libvorbis-dev libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev pkg-config texinfo zlib1g-dev"
-ENV FFMPEG_VERSION=8.1.1
+ENV FFMPEG_VERSION=9.0.1
+ENV NV_CODEC_HEADERS_VERSION=n13.1.15.0
 RUN apt-get update && \
     apt-get -y install ${DEV} && \
     apt-get -y install nasm libx264-dev libmp3lame-dev libopus-dev libvpx-dev && \
@@ -52,7 +53,7 @@ RUN VID=$(cat /etc/os-release | grep VERSION_ID | cut -d '=' -f 2 | cut -d '"' -
     apt-get update && \
     apt-get install -y cuda-toolkit && \
     unset VID
-RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git && \
+RUN git clone --branch ${NV_CODEC_HEADERS_VERSION} --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git && \
     cd nv-codec-headers && make install && cd ..
 RUN mkdir ffmpeg_sources && \
     cd ffmpeg_sources && \
