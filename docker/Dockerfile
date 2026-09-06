@@ -1,6 +1,6 @@
 # クライアントはプラットフォーム依存のコードを含まないため、BUILDPLATFORMでビルドした結果を
 # 全てのTARGETPLATFORMで再利用できる。これによりビルド時間を短縮できる。
-FROM --platform=$BUILDPLATFORM node:18-bookworm AS client-builder
+FROM --platform=$BUILDPLATFORM node:24-bookworm AS client-builder
 COPY client/package*.json /app/client/
 WORKDIR /app/client
 RUN npm config set fetch-retries 10 \
@@ -21,7 +21,7 @@ RUN npm run build --loglevel=info
 #
 # `npm run build-server`はプラットフォーム依存処理を含まないため、これをBUILDPLATFORMで実行すること
 # でビルド時間をさらに短縮可能だが、手順が煩雑で面倒なので現時点では行っていない。
-FROM node:18-bookworm AS server-builder
+FROM node:24-bookworm AS server-builder
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update
 RUN apt-get install -y build-essential python3
@@ -38,10 +38,10 @@ COPY . .
 RUN rm -rf client
 RUN npm run build-server --loglevel=info
 
-FROM node:18-bookworm AS ffmpeg-builder
+FROM node:24-bookworm AS ffmpeg-builder
 ENV DEV="make gcc git g++ automake curl wget autoconf build-essential libass-dev libfreetype6-dev libsdl1.2-dev libtheora-dev libtool libva-dev libvdpau-dev libvorbis-dev libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev pkg-config texinfo zlib1g-dev"
 ENV FFMPEG_VERSION=9.0.1
-ENV NV_CODEC_HEADERS_VERSION=n13.1.15.0
+ENV NV_CODEC_HEADERS_VERSION=n13.0.19.1
 RUN apt-get update && \
     apt-get -y install ${DEV} && \
     apt-get -y install nasm libx264-dev libmp3lame-dev libopus-dev libvpx-dev && \
@@ -51,7 +51,7 @@ RUN VID=$(cat /etc/os-release | grep VERSION_ID | cut -d '=' -f 2 | cut -d '"' -
     wget https://developer.download.nvidia.com/compute/cuda/repos/debian${VID}/x86_64/cuda-keyring_1.1-1_all.deb && \
     dpkg -i cuda-keyring_1.1-1_all.deb && \
     apt-get update && \
-    apt-get install -y cuda-toolkit && \
+    apt-get install -y cuda-toolkit-12-9 && \
     unset VID
 RUN git clone --branch ${NV_CODEC_HEADERS_VERSION} --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git && \
     cd nv-codec-headers && make install && cd ..
@@ -85,11 +85,11 @@ RUN mkdir ffmpeg_sources && \
     make -j$(nproc) && \
     make install
 
-FROM node:18-bookworm-slim
+FROM node:24-bookworm-slim
 RUN apt-get update && \
-    apt-get -y install yasm libx264-dev libmp3lame-dev libopus-dev libvpx-dev && \
-    apt-get -y install libx265-dev libnuma-dev && \
-    apt-get -y install libasound2 libass9 libvdpau1 libva-x11-2 libva-drm2 libxcb-shm0 libxcb-xfixes0 libxcb-shape0 libvorbisenc2 libtheora0 libaribb24-dev && \
+    apt-get -y install libx264-164 libmp3lame0 libopus0 libvpx7 && \
+    apt-get -y install libx265-199 libnuma1 && \
+    apt-get -y install libasound2 libass9 libvdpau1 libva-x11-2 libva-drm2 libxcb-shm0 libxcb-xfixes0 libxcb-shape0 libvorbisenc2 libtheora0 libaribb24-0 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=server-builder /app /app/

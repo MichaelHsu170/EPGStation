@@ -262,8 +262,13 @@ export default class IPCServer implements IIPCServer {
         // deleteVideoFile
         index[RecordedFunctions.deleteVideoFile] = async msg => {
             const videoFileId = this.getArgsValue<apid.VideoFileId>(msg, 'videoFileId');
+            // isIgnoreProtection は省略可能なため getArgsValue (未指定時に例外を投げる) は使わない
+            const isIgnoreProtection =
+                typeof msg.args !== 'undefined' && typeof msg.args['isIgnoreProtection'] === 'boolean'
+                    ? <boolean>msg.args['isIgnoreProtection']
+                    : false;
 
-            await this.recordedManage.deleteVideoFile(videoFileId);
+            await this.recordedManage.deleteVideoFile(videoFileId, isIgnoreProtection);
         };
 
         // changeProtect

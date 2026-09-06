@@ -229,10 +229,85 @@ export default class RecordedManageModel implements IRecordedManageModel {
     public async addVideoFile(option: AddVideoFileOption): Promise<apid.VideoFileId> {
         this.log.system.info(`add video file: ${option.recordedId} ${option.filePath}`);
 
+        // 同一 recordedId + filePath の登録が既に存在する場合はそれを返す
+        // (呼び出し元がタイムアウト後に再送しても重複レコードを作らないようにする)
+        const existing = await this.videoFileDB.findByRecordedIdAndFilePath(
+            option.recordedId,
+            option.parentDirectoryName,
+            option.filePath,
+        );
+        if (existing !== null) {
+            this.log.system.info(`video file already added: ${option.recordedId} ${option.filePath}`);
+
+            return existing.id;
+        }
+
         const parentDirPath = this.videoUtil.getParentDirPath(option.parentDirectoryName);
         if (parentDirPath === null) {
             this.log.system.error(`parent directory is null: ${option.parentDirectoryName}`);
             throw new Error('ParentDirectoryIsNull');
+        }
+
+        // 同一 recordedId + name (エンコードモード) の古いエンコード済みファイルが存在する場合、
+        // 新しいファイルにそのファイル名を引き継がせて置き換える
+        // (新しいエンコードが成功して登録される直前まで古いファイルは残るため、
+        //  エンコードが途中で失敗しても既存のファイルが失われることはない)
+        //
+        // 既存レコードは delete + insert ではなく size の update のみで置き換える。
+        // レコードの id を維持したまま処理することで、途中で失敗して呼び出し元が
+        // 再送してきた場合でも「既に置き換え済みかどうか」を安全に判定できるようにする
+        // (delete してから insert する方式だと、insert に失敗した瞬間に該当 recordedId+mode の
+        //  レコードが 0 件になり、しかも option.filePath は既にリネームで消えているため、
+        //  再送しても正しい状態に復元できず孤立したファイルになってしまう)
+        if (option.type === 'encoded') {
+            const oldVideoFiles = await this.videoFileDB.findEncodedByRecordedIdAndName(option.recordedId, option.name);
+            if (oldVideoFiles.length > 0) {
+                const oldVideoFile = oldVideoFiles[0];
+                const oldFullPath = path.join(parentDirPath, oldVideoFile.filePath);
+                const newFullPath = path.join(parentDirPath, option.filePath);
+
+                const isNewFileExists = await FileUtil.stat(newFullPath)
+                    .then(() => true)
+                    .catch(() => false);
+
+                if (isNewFileExists) {
+                    this.log.system.info(`replace encoded video file: ${oldFullPath} -> ${newFullPath}`);
+                    await FileUtil.unlink(oldFullPath).catch(err => {
+                        this.log.system.error(`failed to delete old encoded file: ${oldFullPath}`);
+                        this.log.system.error(err);
+                    });
+                    await FileUtil.rename(newFullPath, oldFullPath);
+
+                    const fileSize = await FileUtil.getFileSize(oldFullPath);
+                    await this.videoFileDB.updateSize(oldVideoFile.id, fileSize).catch(err => {
+                        // ファイルの置き換え自体は成功しているため size の更新失敗で
+                        // 処理全体を失敗扱いにはしない (サイズは古い値のまま残るのみ)
+                        this.log.system.error(`failed to update video file size: ${oldVideoFile.id}`);
+                        this.log.system.error(err);
+                    });
+                    this.recordedEvent.emitUpdateVideoFileSize(oldVideoFile.id);
+                } else {
+                    // option.filePath が既に存在しない = 直前の呼び出しで既に置き換え済み
+                    // (呼び出し元がタイムアウト後に再送してきたケース) なので何もしない
+                    this.log.system.info(
+                        `encoded video file already replaced: ${option.recordedId} ${option.name}`,
+                    );
+                }
+
+                // 何らかの理由で同一 recordedId+name の重複レコードが複数残っている場合は
+                // 掃除する (本来 1 件のみのはずだが、過去の不具合による残骸に対する保険)
+                for (let i = 1; i < oldVideoFiles.length; i++) {
+                    const dup = oldVideoFiles[i];
+                    this.log.system.info(`delete duplicated encoded video file record: ${dup.id} ${dup.filePath}`);
+                    await FileUtil.unlink(path.join(parentDirPath, dup.filePath)).catch(() => {});
+                    await this.videoFileDB.deleteOnce(dup.id).catch(err => {
+                        this.log.system.error(`failed to delete duplicated video file record: ${dup.id}`);
+                        this.log.system.error(err);
+                    });
+                }
+
+                return oldVideoFile.id;
+            }
         }
 
         const fileSize = await FileUtil.getFileSize(path.join(parentDirPath, option.filePath));

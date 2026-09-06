@@ -169,6 +169,58 @@ export default class VideoFileDB implements IVideoFileDB {
     }
 
     /**
+     * recordedId とファイルパスを指定して取得する
+     * @param recordedId: apid.RecordedId
+     * @param parentDirectoryName: string
+     * @param filePath: string
+     * @return Promise<VideoFile | null>
+     */
+    public async findByRecordedIdAndFilePath(
+        recordedId: apid.RecordedId,
+        parentDirectoryName: string,
+        filePath: string,
+    ): Promise<VideoFile | null> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection.getRepository(VideoFile).createQueryBuilder().where({
+            recordedId: recordedId,
+            parentDirectoryName: parentDirectoryName,
+            filePath: filePath,
+        });
+
+        const result = await this.promieRetry.run(() => {
+            return queryBuilder.getOne();
+        });
+
+        return typeof result === 'undefined' ? null : result;
+    }
+
+    /**
+     * recordedId とエンコードモード名を指定してエンコード済みビデオファイルを取得する
+     * 通常は 0 or 1 件だが、過去の不具合等で複数存在する可能性があるため配列で返す
+     * @param recordedId: apid.RecordedId
+     * @param name: エンコードモード名 (例: "H.264")
+     * @return Promise<VideoFile[]> id 昇順 (作成順) でソート済み
+     */
+    public async findEncodedByRecordedIdAndName(recordedId: apid.RecordedId, name: string): Promise<VideoFile[]> {
+        const connection = await this.op.getConnection();
+
+        const queryBuilder = connection
+            .getRepository(VideoFile)
+            .createQueryBuilder()
+            .where({
+                recordedId: recordedId,
+                type: 'encoded',
+                name: name,
+            })
+            .orderBy('id', 'ASC');
+
+        return await this.promieRetry.run(() => {
+            return queryBuilder.getMany();
+        });
+    }
+
+    /**
      * 全てのビデオファイルを取得する
      */
     public async findAll(): Promise<VideoFile[]> {

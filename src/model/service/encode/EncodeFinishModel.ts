@@ -5,6 +5,7 @@ import IEncodeEvent, { FinishEncodeInfo } from '../../event/IEncodeEvent';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IIPCClient from '../../ipc/IIPCClient';
+import IPromiseRetry from '../../IPromiseRetry';
 import ISocketIOManageModel from '../socketio/ISocketIOManageModel';
 import IEncodeFinishModel from './IEncodeFinishModel';
 
@@ -14,17 +15,20 @@ export default class EncodeFinishModel implements IEncodeFinishModel {
     private socket: ISocketIOManageModel;
     private ipc: IIPCClient;
     private encodeEvent: IEncodeEvent;
+    private promiseRetry: IPromiseRetry;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('ISocketIOManageModel') socket: ISocketIOManageModel,
         @inject('IIPCClient') ipc: IIPCClient,
         @inject('IEncodeEvent') encodeEvent: IEncodeEvent,
+        @inject('IPromiseRetry') promiseRetry: IPromiseRetry,
     ) {
         this.log = logger.getLogger();
         this.socket = socket;
         this.ipc = ipc;
         this.encodeEvent = encodeEvent;
+        this.promiseRetry = promiseRetry;
     }
 
     public set(): void {
@@ -65,13 +69,21 @@ export default class EncodeFinishModel implements IEncodeFinishModel {
                 const fileSize = await FileUtil.getFileSize(info.fullOutputPath);
                 if (fileSize > 0) {
                     // add encode file
-                    const id = await this.ipc.recorded.addVideoFile({
-                        recordedId: info.recordedId,
-                        parentDirectoryName: info.parentDirName,
-                        filePath: info.filePath,
-                        type: 'encoded',
-                        name: info.mode,
-                    });
+                    // 操作対象の operator プロセスがイベントループの混雑や DB 書き込みの
+                    // リトライ待ちで一時的に応答できないことがあるため、1回の失敗で
+                    // エンコード済みファイルを孤立させないようリトライする
+                    const filePath = info.filePath;
+                    const id = await this.promiseRetry.run(
+                        () =>
+                            this.ipc.recorded.addVideoFile({
+                                recordedId: info.recordedId,
+                                parentDirectoryName: info.parentDirName,
+                                filePath: filePath,
+                                type: 'encoded',
+                                name: info.mode,
+                            }),
+                        { cnt: 3, waitTime: 2000 },
+                    );
                     newVideoFileId = id;
                 } else {
                     if (info.fullOutputPath !== null) {
@@ -92,7 +104,15 @@ export default class EncodeFinishModel implements IEncodeFinishModel {
 
         if (info.removeOriginal === true) {
             // delete source video file
-            await this.ipc.recorded.deleteVideoFile(info.videoFileId, true);
+            // addVideoFile と同様、一時的な応答遅延で本来成功するはずの削除が
+            // 失敗扱いになることを避けるためリトライする。またこの呼び出しが
+            // 失敗しても後続の notifyClient / emitFinishEncode は必ず実行する
+            await this.promiseRetry
+                .run(() => this.ipc.recorded.deleteVideoFile(info.videoFileId, true), { cnt: 3, waitTime: 2000 })
+                .catch(err => {
+                    this.log.encode.error(`failed to delete original video file: ${info.videoFileId}`);
+                    this.log.encode.error(err);
+                });
         }
 
         this.socket.notifyClient();

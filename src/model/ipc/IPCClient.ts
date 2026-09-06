@@ -248,13 +248,16 @@ export default class IPCClient implements IIPCClient {
                 });
             },
             addVideoFile: (option: AddVideoFileOption) => {
-                return this.send<apid.VideoFileId>({
-                    model: ModelName.recorded,
-                    func: RecordedFunctions.addVideoFile,
-                    args: {
-                        option: option,
+                return this.send<apid.VideoFileId>(
+                    {
+                        model: ModelName.recorded,
+                        func: RecordedFunctions.addVideoFile,
+                        args: {
+                            option: option,
+                        },
                     },
-                });
+                    30 * 1000, // タイムアウトを 30 秒に延長 (DB 書き込みのリトライ待ちやイベントループの混雑を許容するため)
+                );
             },
             addUploadedVideoFile: (option: UploadedVideoFileOption) => {
                 return this.send(
@@ -278,14 +281,18 @@ export default class IPCClient implements IIPCClient {
                     },
                 });
             },
-            deleteVideoFile: (videoFileId: apid.VideoFileId) => {
-                return this.send({
-                    model: ModelName.recorded,
-                    func: RecordedFunctions.deleteVideoFile,
-                    args: {
-                        videoFileId: videoFileId,
+            deleteVideoFile: (videoFileId: apid.VideoFileId, isIgnoreProtection?: boolean) => {
+                return this.send(
+                    {
+                        model: ModelName.recorded,
+                        func: RecordedFunctions.deleteVideoFile,
+                        args: {
+                            videoFileId: videoFileId,
+                            isIgnoreProtection: isIgnoreProtection,
+                        },
                     },
-                });
+                    30 * 1000, // addVideoFile と同様の理由でタイムアウトを 30 秒に延長
+                );
             },
             changeProtect: (recordedId: apid.RecordedId, isProtect: boolean) => {
                 return this.send({
