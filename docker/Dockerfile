@@ -42,17 +42,17 @@ FROM node:24-bookworm AS ffmpeg-builder
 ENV DEV="make gcc git g++ automake curl wget autoconf build-essential libass-dev libfreetype6-dev libsdl1.2-dev libtheora-dev libtool libva-dev libvdpau-dev libvorbis-dev libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev pkg-config texinfo zlib1g-dev"
 ENV FFMPEG_VERSION=9.0.1
 ENV NV_CODEC_HEADERS_VERSION=n13.0.19.1
+# CUDA 13.x は Pascal (GTX 10 系) のコンパイル対象を削除したため 12.x 系列に固定する。
+# apt 経由の cuda-toolkit パッケージは NVIDIA 側で古いバージョンが削除される可能性があるため使わない。
+# インストーラーは launch.sh がホスト側の共有キャッシュ (vendor/cuda/cuda.env でバージョン管理) から
+# 取得し、ビルドコンテキストの docker/cuda_installer.run に配置した上でここに COPY される
 RUN apt-get update && \
     apt-get -y install ${DEV} && \
     apt-get -y install nasm libx264-dev libmp3lame-dev libopus-dev libvpx-dev && \
     apt-get -y install libx265-dev libnuma-dev && \
     apt-get -y install libasound2 libass9 libvdpau1 libva-x11-2 libva-drm2 libxcb-shm0 libxcb-xfixes0 libxcb-shape0 libvorbisenc2 libtheora0 libaribb24-dev
-RUN VID=$(cat /etc/os-release | grep VERSION_ID | cut -d '=' -f 2 | cut -d '"' -f 2) && \
-    wget https://developer.download.nvidia.com/compute/cuda/repos/debian${VID}/x86_64/cuda-keyring_1.1-1_all.deb && \
-    dpkg -i cuda-keyring_1.1-1_all.deb && \
-    apt-get update && \
-    apt-get install -y cuda-toolkit-12-9 && \
-    unset VID
+COPY docker/cuda_installer.run /tmp/cuda_installer.run
+RUN sh /tmp/cuda_installer.run --silent --toolkit < /dev/null && rm -f /tmp/cuda_installer.run
 RUN git clone --branch ${NV_CODEC_HEADERS_VERSION} --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git && \
     cd nv-codec-headers && make install && cd ..
 RUN mkdir ffmpeg_sources && \
