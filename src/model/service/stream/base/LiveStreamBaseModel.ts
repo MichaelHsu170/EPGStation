@@ -124,6 +124,14 @@ export default abstract class LiveStreamBaseModel
 
             // パイプ処理
             if (this.streamProcess.stdin !== null) {
+                // stop() 側で unpipe 後に kill するが、kill 時点で既にキューされていた
+                // write が非同期に EPIPE で失敗することがある。そのデータは破棄されて
+                // 問題なく、'error' リスナーが無いと uncaughtException として
+                // プロセス全体に伝播してしまうため、ここで受け止めて debug ログに留める。
+                this.streamProcess.stdin.on('error', err => {
+                    this.log.stream.debug(`streamProcess stdin error: ${err.message}`);
+                });
+
                 // HLS 配信の場合は arib-subtitle-timedmetadater を通す
                 if (this.getStreamType() === 'LiveHLS') {
                     this.log.stream.info('use arib-subtitle-timedmetadater');

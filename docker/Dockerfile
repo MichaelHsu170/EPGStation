@@ -40,7 +40,6 @@ RUN npm run build-server --loglevel=info
 
 FROM node:24-bookworm AS ffmpeg-builder
 ENV DEV="make gcc git g++ automake curl wget autoconf build-essential libass-dev libfreetype6-dev libsdl1.2-dev libtheora-dev libtool libva-dev libvdpau-dev libvorbis-dev libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev pkg-config texinfo zlib1g-dev"
-ENV FFMPEG_VERSION=9.0.1
 ENV NV_CODEC_HEADERS_VERSION=n13.0.19.1
 # CUDA 13.x は Pascal (GTX 10 系) のコンパイル対象を削除したため 12.x 系列に固定する。
 # apt 経由の cuda-toolkit パッケージは NVIDIA 側で古いバージョンが削除される可能性があるため使わない。
@@ -55,9 +54,12 @@ COPY docker/cuda_installer.run /tmp/cuda_installer.run
 RUN sh /tmp/cuda_installer.run --silent --toolkit < /dev/null && rm -f /tmp/cuda_installer.run
 RUN git clone --branch ${NV_CODEC_HEADERS_VERSION} --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git && \
     cd nv-codec-headers && make install && cd ..
-RUN mkdir ffmpeg_sources && \
-    cd ffmpeg_sources && \
-    curl -fsSL http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.bz2 | tar -xj --strip-components=1 && \
+# ffmpeg は ARIB PMT に宣言されているが実データの無いストリーム（例: 空の第2音声PID）
+# を自動的に除外するパッチを当てた自前フォーク (tv_live/srcs/ffmpeg, mh/master ブランチ,
+# FFmpeg公式 n9.0.1 ベース) からビルドする。ビルドコンテキストは docker-compose.yml の
+# additional_contexts: ffmpegsrc で渡される。
+COPY --from=ffmpegsrc . /ffmpeg_sources
+RUN cd /ffmpeg_sources && \
     export PATH=/usr/local/cuda/bin:${PATH} && \
     ./configure \
       --prefix=/usr/local \
