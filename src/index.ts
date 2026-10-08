@@ -102,14 +102,28 @@ const runService = async () => {
     );
 
     // 終了したら再起動
+    // 終了直後の子プロセスへの send が失敗すると exit と error の両方が発行されるため、再起動は 1 回だけ行う
     const log = container.get<ILoggerModel>('ILoggerModel').getLogger();
+    let isRestarted = false;
+    const restart = () => {
+        if (isRestarted === true) {
+            return;
+        }
+        isRestarted = true;
+        runService();
+    };
     child.once('exit', () => {
         log.system.fatal('service process is down');
         log.system.fatal('restart service');
-        runService();
+        restart();
     });
-    child.once('error', () => {
-        runService();
+    // send の失敗は何度でも発行され得るため on で受ける (未処理の error で operator が落ちないように)。
+    // 起動に失敗した場合 (pid が無い) は exit が発行されないことがあるのでここで再起動する
+    child.on('error', err => {
+        log.system.error(`service process error: ${err.message}`);
+        if (typeof child.pid === 'undefined') {
+            restart();
+        }
     });
 
     // buffer が埋まらないようにする
