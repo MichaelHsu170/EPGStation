@@ -29,6 +29,8 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
     private thumbnailEvent: IThumbnailEvent;
     private videoUtil: IVideoUtil;
 
+    private static readonly CREATE_TIMEOUT = 10 * 60 * 1000; // サムネイル生成プロセスの最大実行時間
+
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('IConfiguration') configuration: IConfiguration,
@@ -98,10 +100,11 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         const cmds = ProcessUtil.parseCmdStr(cmdStr);
 
         // コマンドの引数準備
+        // (パスは関数で渡す. 番組名由来のファイル名に含まれる $& などを置換パターンとして解釈させないため)
         for (let i = 0; i < cmds.args.length; i++) {
             cmds.args[i] = cmds.args[i]
-                .replace(/%INPUT%/, videoFilePath)
-                .replace(/%OUTPUT%/, output)
+                .replace(/%INPUT%/, () => videoFilePath)
+                .replace(/%OUTPUT%/, () => output)
                 .replace(/%THUMBNAIL_POSITION%/, `${this.config.thumbnailPosition.toString(10)}`)
                 .replace(/%THUMBNAIL_SIZE%/, this.config.thumbnailSize);
         }
@@ -151,8 +154,16 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
             return true;
         };
 
+        // 終了しないプロセスがあると後続のサムネイル生成がすべて止まるため、時間内に終わらなければ止める
+        // (止めた場合は exit の code が null になり、失敗として扱われる)
+        const timeoutId = setTimeout(() => {
+            this.log.system.error(`create thumbnail timeout: ${videoFileId}`);
+            child.kill('SIGKILL');
+        }, ThumbnailManageModel.CREATE_TIMEOUT);
+
         return new Promise<void>(async (resolve: () => void, reject: (err: Error) => void) => {
             child.on('exit', async code => {
+                clearTimeout(timeoutId);
                 if ((await endProcessing(code)) === true) {
                     resolve();
                 } else {
@@ -161,12 +172,14 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
             });
 
             child.on('error', err => {
+                clearTimeout(timeoutId);
                 this.log.system.error(`create thumbnail failed: ${videoFileId}`);
                 reject(err);
             });
 
             // プロセスの即時終了対応
             if (ProcessUtil.isExited(child) === true) {
+                clearTimeout(timeoutId);
                 child.removeAllListeners();
                 if ((await endProcessing(child.exitCode)) === true) {
                     resolve();
