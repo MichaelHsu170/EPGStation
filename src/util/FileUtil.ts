@@ -202,24 +202,6 @@ namespace FileUtil {
     };
 
     /**
-     * 指定したファイルに追加
-     * @param file: string file path
-     * @param str: string 追記内容
-     * @return Promise<void>
-     */
-    export const appendFile = (file: string, str: string): Promise<void> => {
-        return new Promise<void>((resolve, reject) => {
-            fs.appendFile(file, str, err => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve();
-                }
-            });
-        });
-    };
-
-    /**
      * FileList 定義
      */
     export interface FileList {

@@ -15,11 +15,14 @@ class DropCheckerModel implements IDropCheckerModel {
     private log: ILogger;
     private listener: events.EventEmitter = new events.EventEmitter();
     private dest: string | null = null;
+    // 1 イベントごとに appendFile (open/write/close) すると、受信不良で毎秒数千件のドロップが出たときに
+    // 同時に大量のファイルを開き、順序も崩れるため、ログは 1 本のストリームに順に書き込む
+    private logStream: fs.WriteStream | null = null;
     private result: aribts.Result | null = null;
     private pidIndex: { [key: number]: string } = {};
     private time: Date | null = null;
     private hasError: boolean = false; // パケットチェック中にエラーを検知したか？
-    private isFinished: boolean = false; // 終了処理が終わっているか？
+    private finishing: Promise<void> | null = null; // 実行中または完了した終了処理 (複数の呼び出し元で共有する)
 
     private transformStream: stream.Transform | null = null;
     private tsReadableConnector: aribts.TsReadableConnector | null = null;
@@ -46,6 +49,11 @@ class DropCheckerModel implements IDropCheckerModel {
 
         // 空ファイル生成
         await FileUtil.touchFile(this.dest);
+        this.logStream = fs.createWriteStream(this.dest, { flags: 'a' });
+        this.logStream.on('error', err => {
+            this.log.system.error(`drop log write error: ${this.dest}`);
+            this.log.system.error(err);
+        });
 
         this.transformStream = new stream.Transform({
             transform: function (chunk: any, _encoding: string, done: () => void): void {
@@ -131,12 +139,17 @@ class DropCheckerModel implements IDropCheckerModel {
      * 終了処理
      * @returns Promise<void>
      */
-    private async onFinish(): Promise<void> {
-        if (this.isFinished === true) {
-            return;
+    private onFinish(): Promise<void> {
+        // stop() とストリーム終了・エラーから同時に呼ばれることがあるため、終了処理は 1 回だけ行い
+        // 全員がその完了を待つ (2 回目の呼び出しが先に戻ってログを閉じると、集計が途中で切れる)
+        if (this.finishing === null) {
+            this.finishing = this.finish();
         }
-        this.isFinished = true;
 
+        return this.finishing;
+    }
+
+    private async finish(): Promise<void> {
         if (this.tsPacketAnalyzer === null) {
             return;
         }
@@ -164,6 +177,11 @@ class DropCheckerModel implements IDropCheckerModel {
                 this.log.system.error(`append error: ${this.dest}`);
                 this.log.system.error(err);
             });
+        }
+
+        // 集計を書き終えたらログを閉じる
+        if (this.logStream !== null) {
+            await new Promise<void>(resolve => this.logStream!.end(() => resolve()));
         }
     }
 
@@ -254,11 +272,16 @@ class DropCheckerModel implements IDropCheckerModel {
      * @return Promise<void>
      */
     private async appendFile(str: string): Promise<void> {
-        if (this.dest === null) {
+        if (this.dest === null || this.logStream === null) {
             throw new Error('LogFilePathIsNull');
         }
+        if (this.logStream.writableEnded === true) {
+            // 終了処理後に届いたイベント
+            return;
+        }
 
-        await FileUtil.appendFile(this.dest, str);
+        // 書き込みエラーはストリームの error で記録する
+        await new Promise<void>(resolve => this.logStream!.write(str, () => resolve()));
     }
 
     /**
@@ -365,6 +388,11 @@ class DropCheckerModel implements IDropCheckerModel {
             this.log.system.error(`finish drop check error: ${this.dest}`);
             this.log.system.error(err);
         });
+
+        // 解析開始前に停止された場合など、onFinish でログが閉じられていなければ閉じる
+        if (this.logStream !== null && this.logStream.writableEnded === false) {
+            this.logStream.end();
+        }
 
         if (this.tsSectionParser !== null) {
             this.tsSectionParser.removeAllListeners();
