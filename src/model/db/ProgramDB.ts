@@ -145,7 +145,7 @@ export default class ProgramDB implements IProgramDB {
         let subGenre3: number | null = null;
         if (typeof program.genres !== 'undefined') {
             // 最大3つのジャンルを格納する
-            if (program.genres[0].lv1 < 0xe) {
+            if (program.genres.length > 0 && program.genres[0].lv1 < 0xe) {
                 genre1 = program.genres[0].lv1;
                 subGenre1 = typeof program.genres[0].lv2 === 'undefined' ? null : program.genres[0].lv2;
             }
