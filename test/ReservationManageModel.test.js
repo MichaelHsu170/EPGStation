@@ -78,3 +78,9 @@ test('event relays for the same program added at the same time reserve it once',
     assert.deepStrictEqual(results.sort(), [1, null].sort());
     await assertLockReleased(model);
 });
+
+test('adding a reservation with an invalid encode mode is refused', async () => {
+    const model = createModel({ optionChecker: { checkEncodeOption: () => false } });
+
+    await assert.rejects(model.add({ programId: 1, encodeOption: { mode1: 'nope', isDeleteOriginalAfterEncode: false } }), /AddReservationOptionError/);
+});

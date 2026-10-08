@@ -460,8 +460,11 @@ class ReservationManageModel implements IReservationManageModel {
             this.optionChecker.checkEncodeOption(option.encodeOption) === false;
 
         // 時刻指定予約なのに timeSpecifiedOption が設定されていない
+        // (エンコードオプションの判定結果を上書きしないよう || で合わせる)
         if (isEdit === false) {
-            isFail = typeof option.programId === 'undefined' && typeof option.timeSpecifiedOption === 'undefined';
+            isFail =
+                isFail ||
+                (typeof option.programId === 'undefined' && typeof option.timeSpecifiedOption === 'undefined');
         }
 
         return !isFail;
