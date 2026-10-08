@@ -238,14 +238,16 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      */
     private getStream(reserve: Reserve, abortSignal?: AbortSignal): Promise<http.IncomingMessage> {
         const mirakurun = this.mirakurunClientModel.getClient();
-        mirakurun.priority = reserve.isConflict ? this.config.conflictPriority : this.config.recPriority;
+        // client は共有されているため mirakurun.priority には設定せず、リクエストごとに渡す
+        // (設定してからリクエストを送るまでの間に他の録画が値を書き換えることがある)
+        const priority = reserve.isConflict ? this.config.conflictPriority : this.config.recPriority;
 
         if (reserve.programId === null) {
             // 時刻指定予約
-            return this.getTimeSpecifiedStream(reserve, mirakurun, abortSignal);
+            return this.getTimeSpecifiedStream(reserve, mirakurun, priority, abortSignal);
         } else {
             // programId 指定予約
-            return mirakurun.getProgramStream({ id: reserve.programId, decode: true, signal: abortSignal });
+            return mirakurun.getProgramStream({ id: reserve.programId, decode: true, priority, signal: abortSignal });
         }
     }
 
@@ -253,11 +255,13 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
      * 時刻指定予約の stream を返す
      * @param reserve: Reserve
      * @param mirakurun: Mirakurun
+     * @param priority: number
      * @return Promise<http.IncomingMessage>
      */
     private async getTimeSpecifiedStream(
         reserve: Reserve,
         mirakurun: Mirakurun,
+        priority: number,
         abortSignal?: AbortSignal,
     ): Promise<http.IncomingMessage> {
         const now = new Date().getTime();
@@ -276,7 +280,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
 
         // mirakurun から channel stream を受け取る
         const channelStream = await mirakurun
-            .getServiceStream({ id: reserve.channelId, decode: true, signal: abortSignal })
+            .getServiceStream({ id: reserve.channelId, decode: true, priority, signal: abortSignal })
             .catch(err => {
                 this.log.system.error(`stream get error ${reserve.channelId}`);
                 this.log.system.error(err);
