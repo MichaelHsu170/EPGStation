@@ -1,4 +1,5 @@
 import { inject, injectable } from 'inversify';
+import { promises as fsPromises } from 'fs';
 import { mkdirp } from 'mkdirp';
 import * as path from 'path';
 import * as apid from '../../../../api';
@@ -262,8 +263,12 @@ export default class RecordedManageModel implements IRecordedManageModel {
         if (option.type === 'encoded') {
             const oldVideoFiles = await this.videoFileDB.findEncodedByRecordedIdAndName(option.recordedId, option.name);
             if (oldVideoFiles.length > 0) {
+                // 既存ファイルのパスはそのファイル自身の親ディレクトリから求める
+                const getFullPath = (videoFile: VideoFile): string =>
+                    this.videoUtil.getFullFilePathFromVideoFile(videoFile) ??
+                    path.join(parentDirPath, videoFile.filePath);
                 const oldVideoFile = oldVideoFiles[0];
-                const oldFullPath = path.join(parentDirPath, oldVideoFile.filePath);
+                const oldFullPath = getFullPath(oldVideoFile);
                 const newFullPath = path.join(parentDirPath, option.filePath);
 
                 const isNewFileExists = await FileUtil.stat(newFullPath)
@@ -272,11 +277,10 @@ export default class RecordedManageModel implements IRecordedManageModel {
 
                 if (isNewFileExists) {
                     this.log.system.info(`replace encoded video file: ${oldFullPath} -> ${newFullPath}`);
-                    await FileUtil.unlink(oldFullPath).catch(err => {
-                        this.log.system.error(`failed to delete old encoded file: ${oldFullPath}`);
-                        this.log.system.error(err);
-                    });
-                    await FileUtil.rename(newFullPath, oldFullPath);
+                    // rename は既存の oldFullPath を一度に置き換えるため、先に削除しない (削除と rename の間で
+                    // 落ちると録画が存在しないファイルを指したままになる). FileUtil.rename は失敗時に
+                    // 移動先を削除してしまうので使わない
+                    await fsPromises.rename(newFullPath, oldFullPath);
 
                     const fileSize = await FileUtil.getFileSize(oldFullPath);
                     await this.videoFileDB.updateSize(oldVideoFile.id, fileSize).catch(err => {
@@ -289,9 +293,7 @@ export default class RecordedManageModel implements IRecordedManageModel {
                 } else {
                     // option.filePath が既に存在しない = 直前の呼び出しで既に置き換え済み
                     // (呼び出し元がタイムアウト後に再送してきたケース) なので何もしない
-                    this.log.system.info(
-                        `encoded video file already replaced: ${option.recordedId} ${option.name}`,
-                    );
+                    this.log.system.info(`encoded video file already replaced: ${option.recordedId} ${option.name}`);
                 }
 
                 // 何らかの理由で同一 recordedId+name の重複レコードが複数残っている場合は
@@ -299,7 +301,7 @@ export default class RecordedManageModel implements IRecordedManageModel {
                 for (let i = 1; i < oldVideoFiles.length; i++) {
                     const dup = oldVideoFiles[i];
                     this.log.system.info(`delete duplicated encoded video file record: ${dup.id} ${dup.filePath}`);
-                    await FileUtil.unlink(path.join(parentDirPath, dup.filePath)).catch(() => {});
+                    await FileUtil.unlink(getFullPath(dup)).catch(() => {});
                     await this.videoFileDB.deleteOnce(dup.id).catch(err => {
                         this.log.system.error(`failed to delete duplicated video file record: ${dup.id}`);
                         this.log.system.error(err);
