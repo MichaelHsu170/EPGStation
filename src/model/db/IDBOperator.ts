@@ -8,5 +8,7 @@ export default interface IDBOperator {
     convertBoolean(value: boolean): boolean | number;
     isEnableCS(): boolean;
     getRegexpStr(cs: boolean): string;
+    getCSRegexpTarget(column: string): string;
+    isValidRegexp(pattern: string): Promise<boolean>;
     getLikeStr(cs: boolean): string;
 }

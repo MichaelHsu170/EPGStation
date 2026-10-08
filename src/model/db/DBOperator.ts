@@ -180,12 +180,46 @@ export default class DBOperator implements IDBOperator {
     public getRegexpStr(cs: boolean): string {
         switch (this.config.dbtype) {
             case 'mysql':
-                return cs ? 'regexp binary' : 'regexp';
+                // 大小文字の区別は getCSRegexpTarget の照合順序で行う (regexp binary はバイト単位の照合になる)
+                return 'regexp';
             case 'postgres':
                 return cs ? '~' : '~*';
             case 'sqlite':
             default:
                 return 'regexp';
+        }
+    }
+
+    /**
+     * 大小文字を区別する正規表現検索で、検索対象の列に付ける式を返す
+     * mysql でバイト列 (CAST AS BINARY) にすると . や文字クラスが日本語 1 文字に一致しないため、
+     * 大小文字を区別しつつ文字単位で照合する utf8mb4_bin 照合順序を使う
+     * @param column: string 列 (式)
+     * @return string
+     */
+    public getCSRegexpTarget(column: string): string {
+        return this.config.dbtype === 'mysql' ? `${column} COLLATE utf8mb4_bin` : `CAST(${column} AS BINARY)`;
+    }
+
+    /**
+     * 正規表現が DB で使用できるか (構文が正しいか) を DB 自身に判定させる
+     * (検索は DB の正規表現エンジンで行うため、同じエンジンで確認する)
+     * @param pattern: string
+     * @return Promise<boolean>
+     */
+    public async isValidRegexp(pattern: string): Promise<boolean> {
+        if (this.isEnabledRegexp() === false) {
+            return true;
+        }
+
+        const connection = await this.getConnection();
+        const param = this.config.dbtype === 'postgres' ? '$1' : '?';
+        try {
+            await connection.query(`SELECT '' ${this.getRegexpStr(false)} ${param}`, [pattern]);
+
+            return true;
+        } catch (err: any) {
+            return false;
         }
     }
 

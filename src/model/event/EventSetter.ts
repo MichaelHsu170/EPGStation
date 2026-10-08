@@ -118,25 +118,37 @@ export default class EventSetter implements IEventSetter {
         // ルール追加イベント
         this.ruleEvent.setAdded(ruleId => {
             this.ipc.notifyClient();
-            this.reservationManage.updateRule(ruleId);
+            this.reservationManage.updateRule(ruleId).catch(err => {
+                this.log.system.error(`failed to update rule. ruleId: ${ruleId}`);
+                this.log.system.error(err);
+            });
         });
 
         // ルール更新イベント
         this.ruleEvent.setUpdated(ruleId => {
             this.ipc.notifyClient();
-            this.reservationManage.updateRule(ruleId);
+            this.reservationManage.updateRule(ruleId).catch(err => {
+                this.log.system.error(`failed to update rule. ruleId: ${ruleId}`);
+                this.log.system.error(err);
+            });
         });
 
         // ルール有効化イベント
         this.ruleEvent.setEnabled(ruleId => {
             this.ipc.notifyClient();
-            this.reservationManage.updateRule(ruleId);
+            this.reservationManage.updateRule(ruleId).catch(err => {
+                this.log.system.error(`failed to update rule. ruleId: ${ruleId}`);
+                this.log.system.error(err);
+            });
         });
 
         // ルール無効化イベント
         this.ruleEvent.setDisabled(ruleId => {
             this.ipc.notifyClient();
-            this.reservationManage.updateRule(ruleId);
+            this.reservationManage.updateRule(ruleId).catch(err => {
+                this.log.system.error(`failed to update rule. ruleId: ${ruleId}`);
+                this.log.system.error(err);
+            });
         });
 
         // ルール削除イベント

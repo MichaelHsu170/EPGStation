@@ -75,3 +75,36 @@ test('a failed reservation update does not block later EPG updates', async () =>
     assert.strictEqual(calls[1].isFirst, true);
     calls[1].resolve();
 });
+
+test('a failed rule reservation update is logged, not left as an unhandled rejection', async () => {
+    const errors = [];
+    const handlers = {};
+    const setter = Object.create(EventSetter.prototype);
+    Object.assign(setter, {
+        log: { system: { error: e => errors.push(String(e)) } },
+        ipc: { notifyClient: () => {} },
+        epgUpdateEvent: { setUpdated: () => {} },
+        ruleEvent: new Proxy({}, { get: (_, key) => cb => (handlers[key] = cb) }),
+        reservationManage: { updateRule: async () => Promise.reject(new Error('Regex error')) },
+    });
+    const noop = () => {};
+    for (const key of ['encodeEvent', 'reserveEvent', 'recordedEvent', 'recordingEvent', 'recordedTagEvent', 'thumbnailEvent']) {
+        setter[key] = new Proxy({}, { get: () => noop });
+    }
+    setter.set();
+
+    const unhandled = [];
+    const onUnhandled = err => unhandled.push(err);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+        for (const key of ['setAdded', 'setUpdated', 'setEnabled', 'setDisabled']) {
+            handlers[key](1);
+        }
+        await new Promise(setImmediate);
+    } finally {
+        process.off('unhandledRejection', onUnhandled);
+    }
+
+    assert.deepStrictEqual(unhandled, []);
+    assert.strictEqual(errors.filter(e => e.includes('Regex error')).length, 4);
+});

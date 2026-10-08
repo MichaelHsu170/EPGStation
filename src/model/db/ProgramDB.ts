@@ -531,13 +531,15 @@ export default class ProgramDB implements IProgramDB {
             query.param[valueName] = keyword;
             if (option.cs === true) {
                 if (option.name === true) {
-                    or.push(`CAST(halfWidthName AS BINARY) ${regexp} :${valueName}`);
+                    or.push(`${this.op.getCSRegexpTarget('halfWidthName')} ${regexp} :${valueName}`);
                 }
                 if (option.description === true) {
-                    or.push(`CAST(COALESCE(halfWidthDescription,'') AS BINARY) ${regexp} :${valueName}`);
+                    or.push(
+                        `${this.op.getCSRegexpTarget("COALESCE(halfWidthDescription,'')")} ${regexp} :${valueName}`,
+                    );
                 }
                 if (option.extended === true) {
-                    or.push(`CAST(COALESCE(halfWidthExtended,'') AS BINARY) ${regexp} :${valueName}`);
+                    or.push(`${this.op.getCSRegexpTarget("COALESCE(halfWidthExtended,'')")} ${regexp} :${valueName}`);
                 }
             } else {
                 if (option.name === true) {

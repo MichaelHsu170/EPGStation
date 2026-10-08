@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
+import IDBOperator from '../../db/IDBOperator';
 import IRuleDB from '../../db/IRuleDB';
 import IRuleEvent from '../../event/IRuleEvent';
 import ILogger from '../../ILogger';
@@ -16,17 +17,20 @@ export default class RuleManageModel implements IRuleManageModel {
     private optionChecker: IReserveOptionChecker;
     private ruleDB: IRuleDB;
     private ruleEvent: IRuleEvent;
+    private op: IDBOperator;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('IReserveOptionChecker') optionChecker: IReserveOptionChecker,
         @inject('IRuleDB') ruleDB: IRuleDB,
         @inject('IRuleEvent') ruleEvent: IRuleEvent,
+        @inject('IDBOperator') op: IDBOperator,
     ) {
         this.log = logger.getLogger();
         this.optionChecker = optionChecker;
         this.ruleDB = ruleDB;
         this.ruleEvent = ruleEvent;
+        this.op = op;
     }
 
     /**
@@ -40,11 +44,15 @@ export default class RuleManageModel implements IRuleManageModel {
         this.log.system.info('add rule');
 
         // check option
-        if (this.optionChecker.checkRuleOption(rule) === false) {
+        if (this.optionChecker.checkRuleOption(rule) === false || (await this.hasValidRegexps(rule)) === false) {
             this.unlockExecution();
             this.log.system.error('failed to add rule');
             throw new Error('AddRuleError');
         }
+
+        // 新規追加なので id はクライアントの指定を使わない (既存の id や上限値を指定されると追加できなくなる)
+        delete (<any>rule).id;
+        delete (<any>rule).updateCnt;
 
         let ruleId!: apid.RuleId;
         try {
@@ -53,6 +61,8 @@ export default class RuleManageModel implements IRuleManageModel {
             this.unlockExecution();
             this.log.system.error('insert rule error');
             this.log.system.error(err);
+            // 失敗を返さないと id 無しで追加イベントが発行され、全ルールの予約が更新対象になってしまう
+            throw err;
         }
 
         this.unlockExecution();
@@ -86,7 +96,7 @@ export default class RuleManageModel implements IRuleManageModel {
         this.log.system.info(`update rule: ${rule.id}`);
 
         // check option
-        if (this.optionChecker.checkRuleOption(rule) === false) {
+        if (this.optionChecker.checkRuleOption(rule) === false || (await this.hasValidRegexps(rule)) === false) {
             this.unlockExecution();
             this.log.system.error('failed to update rule');
             throw new Error('UpdateRuleError');
@@ -197,6 +207,28 @@ export default class RuleManageModel implements IRuleManageModel {
         }
 
         return failedIds;
+    }
+
+    /**
+     * 正規表現として指定されたキーワードが DB で使用できるか
+     * (使用できないと予約更新が毎回失敗し、更新前の予約が残り続ける)
+     * @param rule: apid.AddRuleOption
+     * @return Promise<boolean>
+     */
+    private async hasValidRegexps(rule: apid.AddRuleOption): Promise<boolean> {
+        const option = rule.searchOption;
+        if (option.keyRegExp === true && typeof option.keyword !== 'undefined') {
+            if ((await this.op.isValidRegexp(option.keyword)) === false) {
+                return false;
+            }
+        }
+        if (option.ignoreKeyRegExp === true && typeof option.ignoreKeyword !== 'undefined') {
+            if ((await this.op.isValidRegexp(option.ignoreKeyword)) === false) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
