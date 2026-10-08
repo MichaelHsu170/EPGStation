@@ -59,16 +59,16 @@ export default class RuleItems extends Vue {
     /**
      * ルールの有効、無効を変える
      */
-    public changeState(item: RuleStateData): void {
+    public async changeState(item: RuleStateData): Promise<void> {
         try {
             if (item.display.isEnable === true) {
-                this.ruleApiModel.enable(item.display.id);
+                await this.ruleApiModel.enable(item.display.id);
                 this.snackbarState.open({
                     color: 'success',
                     text: `有効化: ${item.display.keyword}`,
                 });
             } else {
-                this.ruleApiModel.disable(item.display.id);
+                await this.ruleApiModel.disable(item.display.id);
                 this.snackbarState.open({
                     color: 'success',
                     text: `無効化: ${item.display.keyword}`,
