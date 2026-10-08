@@ -1,6 +1,11 @@
+# ベースイメージはダイジェストで固定する。タグのままだと upstream の更新のたびにキャッシュが効かず、
+# ffmpeg の再ビルドに 1 時間以上かかる。更新するときはこの 2 行を新しいダイジェストに書き換える
+ARG NODE_IMAGE=node:24-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0
+ARG NODE_SLIM_IMAGE=node:24-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
+
 # クライアントはプラットフォーム依存のコードを含まないため、BUILDPLATFORMでビルドした結果を
 # 全てのTARGETPLATFORMで再利用できる。これによりビルド時間を短縮できる。
-FROM --platform=$BUILDPLATFORM node:24-bookworm AS client-builder
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS client-builder
 COPY client/package*.json /app/client/
 WORKDIR /app/client
 RUN npm config set fetch-retries 10 \
@@ -21,7 +26,7 @@ RUN npm run build --loglevel=info
 #
 # `npm run build-server`はプラットフォーム依存処理を含まないため、これをBUILDPLATFORMで実行すること
 # でビルド時間をさらに短縮可能だが、手順が煩雑で面倒なので現時点では行っていない。
-FROM node:24-bookworm AS server-builder
+FROM ${NODE_IMAGE} AS server-builder
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update
 RUN apt-get install -y build-essential python3
@@ -38,7 +43,7 @@ COPY . .
 RUN rm -rf client
 RUN npm run build-server --loglevel=info
 
-FROM node:24-bookworm AS ffmpeg-builder
+FROM ${NODE_IMAGE} AS ffmpeg-builder
 ENV DEV="make gcc git g++ automake curl wget autoconf build-essential libass-dev libfreetype6-dev libsdl1.2-dev libtheora-dev libtool libva-dev libvdpau-dev libvorbis-dev libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev pkg-config texinfo zlib1g-dev"
 ENV NV_CODEC_HEADERS_VERSION=n13.0.19.1
 # CUDA 13.x は Pascal (GTX 10 系) のコンパイル対象を削除したため 12.x 系列に固定する。
@@ -87,7 +92,7 @@ RUN cd /ffmpeg_sources && \
     make -j$(nproc) && \
     make install
 
-FROM node:24-bookworm-slim
+FROM ${NODE_SLIM_IMAGE}
 RUN apt-get update && \
     apt-get -y install libx264-164 libmp3lame0 libopus0 libvpx7 && \
     apt-get -y install libx265-199 libnuma1 && \
