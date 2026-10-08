@@ -97,7 +97,7 @@ export default class ManualReserve extends Vue {
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',
-                text: '予約の追加に失敗しました。',
+                text: `予約の追加に失敗しました。${Util.getApiErrorReason(err)}`,
             });
 
             return;
@@ -124,7 +124,7 @@ export default class ManualReserve extends Vue {
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',
-                text: '予約の更新に失敗しました。',
+                text: `予約の更新に失敗しました。${Util.getApiErrorReason(err)}`,
             });
 
             return;

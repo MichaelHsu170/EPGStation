@@ -140,6 +140,25 @@ namespace Util {
     export const getOSDarkTheme = (): boolean => {
         return window.matchMedia('(prefers-color-scheme: dark)').matches;
     };
+
+    /**
+     * API 呼び出しの失敗理由を表示用に返す (例: ' (GetExecutionTimeoutError)'). 理由が無ければ空文字
+     * @param err: axios が投げたエラー
+     * @return string
+     */
+    export const getApiErrorReason = (err: any): string => {
+        const data = err?.response?.data;
+        let reason = '';
+        if (typeof data?.errors === 'string') {
+            reason = data.errors;
+        } else if (typeof data?.message === 'string') {
+            reason = data.message;
+        } else if (typeof err?.message === 'string') {
+            reason = err.message;
+        }
+
+        return reason.length > 0 ? ` (${reason})` : '';
+    };
 }
 
 export default Util;

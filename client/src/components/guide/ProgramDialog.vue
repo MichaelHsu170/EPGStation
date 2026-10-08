@@ -202,7 +202,7 @@ export default class ProgramDialog extends Vue {
             if (this.dialogState.displayData !== null) {
                 this.snackbarState.open({
                     color: 'error',
-                    text: `${this.dialogState.displayData.programName} 予約失敗`,
+                    text: `${this.dialogState.displayData.programName} 予約失敗${Util.getApiErrorReason(err)}`,
                 });
             }
         }
