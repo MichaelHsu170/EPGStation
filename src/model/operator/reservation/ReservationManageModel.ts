@@ -169,18 +169,23 @@ class ReservationManageModel implements IReservationManageModel {
     public async addEventRelay(programId: apid.ProgramId, parentReserve: Reserve): Promise<apid.ReserveId | null> {
         this.log.system.info(`add event relay. reserveId: ${parentReserve.id}, programId: ${programId}`);
 
-        // すでに録画されていないか検索する
-        const reservedPrograms = await this.reserveDB.findProgramId(programId);
-        if (reservedPrograms.length > 0) {
-            this.log.system.warn(`already reserved program. reserveId: ${parentReserve.id}, programId: ${programId}`);
-            return null;
-        }
-
         // 実行権取得
         const exeId = await this.executeManagementModel.getExecution(ReservationManageModel.ADD_RESERVE_PRIORITY);
         const finalize = () => {
             this.executeManagementModel.unLockExecution(exeId);
         };
+
+        // すでに録画されていないか検索する
+        // (実行権取得後に確認しないと、同時に呼ばれた場合に両方が未予約と判断して重複予約してしまう)
+        const reservedPrograms = await this.reserveDB.findProgramId(programId).catch(err => {
+            finalize();
+            throw err;
+        });
+        if (reservedPrograms.length > 0) {
+            finalize();
+            this.log.system.warn(`already reserved program. reserveId: ${parentReserve.id}, programId: ${programId}`);
+            return null;
+        }
 
         // 予約情報を生成する
         const newReserve = await this.createEventRelayReserve(programId, parentReserve).catch(err => {
@@ -692,6 +697,7 @@ class ReservationManageModel implements IReservationManageModel {
 
         // ルールを取得
         const rule = await this.ruleDB.findId(ruleId, true).catch(err => {
+            finalize();
             this.log.system.error(`get rule error: ${ruleId}`);
             this.log.system.error(err);
             throw err;
@@ -764,6 +770,7 @@ class ReservationManageModel implements IReservationManageModel {
                 const baseTime = new Date(DateUtil.format(new Date(), 'yyyy/MM/dd 00:00:00 +0900')).getTime();
                 for (const time of rule.searchOption.times) {
                     if (typeof time.start === 'undefined' || typeof time.range === 'undefined') {
+                        finalize();
                         throw new Error('RuleSearchTimesOptionError');
                     }
 
@@ -1438,6 +1445,7 @@ class ReservationManageModel implements IReservationManageModel {
 
         // オプションチェック
         if (this.checkManualReserveOption(option, true) === false) {
+            finalize();
             this.log.system.error('edit reservation option error');
             throw new Error('ReservationEditError');
         }
