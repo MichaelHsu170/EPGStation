@@ -102,7 +102,9 @@ export default class EncodeFinishModel implements IEncodeFinishModel {
             info.removeOriginal = false;
         }
 
-        if (info.removeOriginal === true) {
+        // addVideoFile が元ファイルと同じ id を返した場合、元ファイルは既にエンコード結果で
+        // 置き換えられている. ここで削除するとエンコード結果 (と最後の 1 ファイルなら録画自体) を消してしまう
+        if (info.removeOriginal === true && newVideoFileId !== info.videoFileId) {
             // delete source video file
             // addVideoFile と同様、一時的な応答遅延で本来成功するはずの削除が
             // 失敗扱いになることを避けるためリトライする。またこの呼び出しが
