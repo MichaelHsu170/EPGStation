@@ -46,6 +46,51 @@ const createModel = (t, existingEncoded = []) => {
     return { model, root, dirs };
 };
 
+const upload = async (model, root, option) => {
+    const tmp = path.join(root, 'upload.tmp');
+    fs.writeFileSync(tmp, 'uploaded');
+    await model.addUploadedVideoFile({
+        recordedId: 1,
+        parentDirectoryName: 'A',
+        viewName: 'upload',
+        fileType: 'ts',
+        filePath: tmp,
+        ...option,
+    });
+
+    return tmp;
+};
+
+test('an uploaded file keeps only the base name of the name the client sent', async t => {
+    const { model, root, dirs } = createModel(t);
+
+    await upload(model, root, { fileName: '../../evil.ts' });
+
+    assert.strictEqual(fs.readFileSync(path.join(dirs.A, 'evil.ts'), 'utf8'), 'uploaded');
+    assert.strictEqual(fs.existsSync(path.join(root, 'evil.ts')), false);
+    assert.strictEqual(model.inserted[0].filePath, 'evil.ts');
+});
+
+test('an upload sub directory below the recorded directory is used', async t => {
+    const { model, root, dirs } = createModel(t);
+
+    await upload(model, root, { fileName: 'a.ts', subDirectory: 'sub' });
+
+    assert.strictEqual(fs.readFileSync(path.join(dirs.A, 'sub', 'a.ts'), 'utf8'), 'uploaded');
+});
+
+test('an upload sub directory that leaves the recorded directory is rejected and the upload removed', async t => {
+    const { model, root } = createModel(t);
+
+    const tmp = path.join(root, 'upload.tmp');
+    await assert.rejects(
+        upload(model, root, { fileName: 'a.ts', subDirectory: '../outside' }),
+        /DirectoryIsOutsideParentDirectory/,
+    );
+    assert.strictEqual(fs.existsSync(path.join(root, 'outside')), false);
+    assert.strictEqual(fs.existsSync(tmp), false);
+});
+
 test('a re-encode replaces the old encoded file in its own directory and keeps its id', async t => {
     const old = { id: 7, parentDirectoryName: 'B', filePath: 'old.mkv' };
     const { model, dirs } = createModel(t, [old]);

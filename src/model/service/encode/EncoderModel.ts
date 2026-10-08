@@ -307,7 +307,17 @@ class EncoderModel implements IEncoderModel {
             }
         }
 
-        return typeof queueItem.directory === 'undefined' ? parentDir : path.join(parentDir, queueItem.directory);
+        if (typeof queueItem.directory === 'undefined') {
+            return parentDir;
+        }
+
+        const dir = path.join(parentDir, queueItem.directory);
+        if (FileUtil.isInsideDir(parentDir, dir) === false) {
+            this.log.encode.error(`directory is outside the parent directory: ${dir}`);
+            throw new Error('DirectoryIsOutsideParentDirectory');
+        }
+
+        return dir;
     }
 
     /**

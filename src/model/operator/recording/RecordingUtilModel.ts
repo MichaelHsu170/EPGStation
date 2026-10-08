@@ -121,6 +121,10 @@ class RecordingUtilModel implements IRecordingUtilModel {
 
         // ディレクトリ
         const dir = path.join(parentDir.path, subDir);
+        if (FileUtil.isInsideDir(parentDir.path, dir) === false) {
+            this.log.system.error(`directory is outside the parent directory: ${dir}`);
+            throw new Error('DirectoryIsOutsideParentDirectory');
+        }
 
         // ディレクトリが存在するか確認
         try {

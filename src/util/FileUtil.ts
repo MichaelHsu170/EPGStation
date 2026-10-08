@@ -304,6 +304,19 @@ namespace FileUtil {
             });
         });
     };
+
+    /**
+     * target が dir 自身か dir 以下のパスか判定する
+     * (API から指定されたディレクトリが .. で保存先の外を指していないか確認するため)
+     * @param dir: string
+     * @param target: string
+     * @return boolean
+     */
+    export const isInsideDir = (dir: string, target: string): boolean => {
+        const relative = path.relative(dir, target);
+
+        return relative.split(path.sep)[0] !== '..' && path.isAbsolute(relative) === false;
+    };
 }
 
 export default FileUtil;

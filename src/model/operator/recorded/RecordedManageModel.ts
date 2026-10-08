@@ -363,6 +363,11 @@ export default class RecordedManageModel implements IRecordedManageModel {
                 dirPath,
                 await this.recordingUtilModel.formatFilePathString(option.subDirectory, recorded),
             );
+            if (FileUtil.isInsideDir(parentDirPath, dirPath) === false) {
+                this.log.system.error(`directory is outside the parent directory: ${dirPath}`);
+                await FileUtil.unlink(option.filePath).catch(() => {});
+                throw new Error('DirectoryIsOutsideParentDirectory');
+            }
 
             // check dir
             try {
@@ -375,7 +380,8 @@ export default class RecordedManageModel implements IRecordedManageModel {
         }
 
         // コピー先のファイルパスを生成する
-        const filePath = await this.getUploadedVideoFilePath(dirPath, option.fileName);
+        // ファイル名はクライアントが送ってくるため、ディレクトリ部分は使わない
+        const filePath = await this.getUploadedVideoFilePath(dirPath, path.basename(option.fileName));
 
         // アップロードされたファイルを保存先へ移動する
         try {
