@@ -1,4 +1,4 @@
-import { ChildProcess, exec } from 'child_process';
+import { ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import { inject, injectable } from 'inversify';
 import internal, { Readable } from 'stream';
@@ -174,33 +174,9 @@ export default abstract class RecordedStreamBaseModel
         }
 
         // videoFileInfo セット
-        this.videoFileInfo = await this.getVideoInfo(this.videoFilePath);
+        this.videoFileInfo = await this.videoUtil.getInfo(this.videoFilePath);
 
         this.videoFileType = video.type as apid.VideoFileType;
-    }
-
-    /**
-     * 指定されたファイルパスのビデオ情報を取得する
-     * @param filePath: string
-     * @return Promise<VideoFileInfo>
-     */
-    private getVideoInfo(filePath: string): Promise<VideoFileInfo> {
-        return new Promise<VideoFileInfo>((resolve, reject) => {
-            exec(`${this.config.ffprobe} -v 0 -show_format -of json "${filePath}"`, (err, std) => {
-                if (err) {
-                    reject(err);
-
-                    return;
-                }
-                const result = <any>JSON.parse(std);
-
-                resolve({
-                    duration: parseFloat(result.format.duration),
-                    size: parseInt(result.format.size, 10),
-                    bitRate: parseFloat(result.format.bit_rate),
-                });
-            });
-        });
     }
 
     /**
