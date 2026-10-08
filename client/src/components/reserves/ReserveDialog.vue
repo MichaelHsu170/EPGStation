@@ -118,8 +118,9 @@ export default class ReserveDialog extends Vue {
                 const extended = document.getElementById('reserve-extended');
                 if (extended !== null) {
                     let str = extended.innerHTML;
-                    str = str.replace(/(http:\/\/[\x21-\x7e]+)/gi, "<a href='$1' target='_blank'>$1</a>");
-                    str = str.replace(/(https:\/\/[\x21-\x7e]+)/gi, "<a href='$1' target='_blank'>$1</a>");
+                    // URL に ' " < > を含めない (href='...' の属性から抜け出して任意の属性を追加できてしまうため)
+                    str = str.replace(/(http:\/\/[\x21\x23-\x26\x28-\x3b\x3d\x3f-\x7e]+)/gi, "<a href='$1' target='_blank'>$1</a>");
+                    str = str.replace(/(https:\/\/[\x21\x23-\x26\x28-\x3b\x3d\x3f-\x7e]+)/gi, "<a href='$1' target='_blank'>$1</a>");
                     extended.innerHTML = str;
                 }
             });
