@@ -10,6 +10,8 @@ import IDBOperator from './IDBOperator';
 @injectable()
 export default class DBOperator implements IDBOperator {
     private connection: DataSource | null = null;
+    // 接続処理中の呼び出しが同じ接続を待つようにする (並行に呼ばれると DataSource が 2 つ作られてしまう)
+    private connecting: Promise<void> | null = null;
     private config: IConfigFile;
     private log: ILogger;
 
@@ -20,11 +22,18 @@ export default class DBOperator implements IDBOperator {
 
     public async getConnection(): Promise<DataSource> {
         if (this.connection === null) {
-            this.connection = await this.createConnection();
-            await this.setSQLiteExtensions();
+            if (this.connecting === null) {
+                this.connecting = (async () => {
+                    this.connection = await this.createConnection();
+                    await this.setSQLiteExtensions();
+                })().finally(() => {
+                    this.connecting = null;
+                });
+            }
+            await this.connecting;
         }
 
-        return this.connection;
+        return <DataSource>this.connection;
     }
 
     /**
