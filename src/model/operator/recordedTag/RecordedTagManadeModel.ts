@@ -87,7 +87,7 @@ export default class RecordedTagManadeModel implements IRecordedTagManadeModel {
      */
     public async delete(tagId: apid.RecordedTagId): Promise<void> {
         await this.recordedTagDB.deleteOnce(tagId).catch(err => {
-            this.log.system.error(`delete tag error: ${name}`);
+            this.log.system.error(`delete tag error: ${tagId}`);
             throw err;
         });
         this.log.system.info(`delete tag id: ${tagId}`);
