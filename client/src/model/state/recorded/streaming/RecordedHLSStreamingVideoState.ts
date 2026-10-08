@@ -12,6 +12,7 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
     private streamApiModel: IStreamApiModel;
     private streamId: apid.StreamId | null = null;
     private keepTimerId: number | undefined;
+    private isStopRequested: boolean = false;
 
     private isStarting: boolean = false;
 
@@ -41,6 +42,7 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
             await this.stop();
         }
 
+        this.isStopRequested = false;
         this.isStarting = true;
         try {
             this.streamId = await this.streamApiModel.startRecordedHLS(videoFileId, playPosition, mode);
@@ -48,6 +50,14 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
         } catch (err) {
             this.isStarting = false;
             throw err;
+        }
+
+        // 開始待ちの間に stop が呼ばれていた (画面を離れた) 場合は、ここでストリームを止める.
+        // そのままだと keep し続けるタイマーが残り、タブを閉じるまでチューナーが確保され続ける
+        if ((this.isStopRequested as boolean) === true) {
+            await this.stop();
+
+            return;
         }
 
         // ストリームを保持し続ける
@@ -67,6 +77,7 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
      * @return Promise<void>
      */
     public async stop(): Promise<void> {
+        this.isStopRequested = true;
         if (typeof this.keepTimerId !== 'undefined') {
             clearInterval(this.keepTimerId);
             this.keepTimerId = undefined;

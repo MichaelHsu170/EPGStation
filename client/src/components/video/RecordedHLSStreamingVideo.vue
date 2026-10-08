@@ -46,6 +46,7 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
     private lastUpdatePauseState: number = 0; // 最後に pauseStateBeforeCurrentTime を更新した時間
     private updateDurationTimerId: number | undefined; // 録画中の番組の動画長を更新するためのタイマー
     private setCurrentTimeTimerId: number | undefined; // setCurrentTime を大量に呼び出さないようにするためのタイマー
+    private checkEnabledTimerId: number | undefined; // ストリームが有効になったか確認するためのタイマー
     private lastSeekTime: number = 0; // setCurrentTime 実行中に setCurrentTime が重ねて実行されたか確認するための変数
 
     public created(): void {
@@ -95,12 +96,12 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
             }
 
             // ストリームが有効になるまで待つ
-            const checkEnabledTimerId = setInterval(async () => {
+            this.checkEnabledTimerId = setInterval(async () => {
                 if ((await this.videoState.isEnabled()) === false) {
                     return;
                 }
 
-                clearInterval(checkEnabledTimerId);
+                clearInterval(this.checkEnabledTimerId);
                 resolve();
             }, 1000);
         });
@@ -120,6 +121,9 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
     public async beforeDestroy(): Promise<void> {
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
+
+        // ストリームが有効になる前に画面を離れた場合も確認を止める
+        clearInterval(this.checkEnabledTimerId);
 
         super.beforeDestroy();
 

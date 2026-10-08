@@ -8,6 +8,7 @@ class LiveHLSVideoState implements ILiveHLSVideoState {
     private streamApiModel: IStreamApiModel;
     private streamId: apid.StreamId | null = null;
     private keepTimerId: number | undefined;
+    private isStopRequested: boolean = false;
 
     constructor(@inject('IStreamApiModel') streamApiModel: IStreamApiModel) {
         this.streamApiModel = streamApiModel;
@@ -20,7 +21,15 @@ class LiveHLSVideoState implements ILiveHLSVideoState {
      * @return Promise<void>
      */
     public async start(channelId: apid.ChannelId, mode: number): Promise<void> {
+        this.isStopRequested = false;
         this.streamId = await this.streamApiModel.startLiveHLS(channelId, mode);
+        // 開始待ちの間に stop が呼ばれていた (画面を離れた) 場合は、ここでストリームを止める.
+        // そのままだと keep し続けるタイマーが残り、タブを閉じるまでチューナーが確保され続ける
+        if ((this.isStopRequested as boolean) === true) {
+            await this.stop();
+
+            return;
+        }
 
         // ストリームを保持し続ける
         this.keepTimerId = setInterval(async () => {
@@ -37,6 +46,7 @@ class LiveHLSVideoState implements ILiveHLSVideoState {
      * @return Promise<void>
      */
     public async stop(): Promise<void> {
+        this.isStopRequested = true;
         if (typeof this.keepTimerId !== 'undefined') {
             clearInterval(this.keepTimerId);
             this.keepTimerId = undefined;

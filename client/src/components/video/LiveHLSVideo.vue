@@ -36,6 +36,11 @@ export default class LiveHLSVideo extends BaseVideo {
             });
         });
 
+        // 開始に失敗した, または開始待ちの間に画面を離れて停止済みの場合は待たない
+        if (this.videoState.getStreamId() === null) {
+            return;
+        }
+
         // ストリームが有効になるまで待つ
         this.checkEnabledTimerId = setInterval(async () => {
             if ((await this.videoState.isEnabled()) === false) {
@@ -48,6 +53,9 @@ export default class LiveHLSVideo extends BaseVideo {
     }
 
     public async beforeDestroy(): Promise<void> {
+        // ストリームが有効になる前に画面を離れた場合も確認を止める
+        clearInterval(this.checkEnabledTimerId);
+
         super.beforeDestroy();
 
         this.destoryHls();
