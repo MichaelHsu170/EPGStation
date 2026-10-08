@@ -135,6 +135,17 @@ class RecorderModel implements IRecorderModel {
         if (isSuppressLog === false) {
             this.log.system.info(`set timer: ${this.reserve.id}, ${time}`);
         }
+
+        // setTimeout は MAX_TIMER_DELAY を超える待機時間を 1ms として扱い即時に発火するため、
+        // それより先の予約は MAX_TIMER_DELAY 後にタイマーを再設定する
+        if (time > RecorderModel.MAX_TIMER_DELAY) {
+            this.timerId = setTimeout(() => {
+                this.setTimer(this.reserve, true);
+            }, RecorderModel.MAX_TIMER_DELAY);
+
+            return true;
+        }
+
         this.timerId = setTimeout(async () => {
             try {
                 this.prepRecord();
@@ -203,6 +214,8 @@ class RecorderModel implements IRecorderModel {
 
             this.log.system.error(`preprec failed: ${this.reserve.id}`);
             this.log.system.error(err);
+            // 取得済みの stream を閉じないとチューナーが番組終了まで確保されたままになる
+            this.destroyStream();
             if (retry < 3) {
                 // retry
                 setTimeout(() => {
@@ -635,7 +648,11 @@ class RecorderModel implements IRecorderModel {
         if (this.recordedId !== null) {
             // remove recording flag
             this.log.system.info(`remove recording flag: ${this.recordedId}`);
-            await this.recordedDB.removeRecording(this.recordedId);
+            // 失敗しても以降の終了処理 (終了イベント, エンコード) は行う. フラグは起動時の recordings cleanup で消える
+            await this.recordedDB.removeRecording(this.recordedId).catch(err => {
+                this.log.system.error(`remove recording flag error: ${this.recordedId}`);
+                this.log.system.error(err);
+            });
             this.isRecording = false;
 
             // tmp に録画していた場合は移動する
@@ -916,7 +933,10 @@ class RecorderModel implements IRecorderModel {
         if (this.isRecording === true && this.recordedId !== null) {
             const recorded = await this.createRecorded();
             this.log.system.info(`update reocrded: ${this.recordedId}`);
-            this.recordedDB.updateOnce(recorded);
+            this.recordedDB.updateOnce(recorded).catch(err => {
+                this.log.system.error(`update recorded error: ${this.recordedId}`);
+                this.log.system.error(err);
+            });
         }
     }
 
@@ -1044,6 +1064,7 @@ namespace RecorderModel {
     export const CANCEL_EVENT = 'RecordingCancelEvent';
     export const START_RECORDING_EVENT = 'StartRecordingEvent';
     export const EVENT_RELAY_CHECK_TIME = 20 * 1000; // イベントリレーの確認時間 20秒
+    export const MAX_TIMER_DELAY = 2 ** 31 - 1; // setTimeout に指定できる最大の待機時間 (約 24.8 日)
 }
 
 export default RecorderModel;
