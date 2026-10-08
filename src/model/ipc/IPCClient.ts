@@ -46,6 +46,12 @@ export default class IPCClient implements IIPCClient {
 
     private log: ILogger;
     private listener: events.EventEmitter = new events.EventEmitter();
+    // 同一ミリ秒内の送信でも重複しないよう、メッセージ id は時刻ではなく連番にする
+    private lastMessageId: number = 0;
+
+    // 予約操作は operator 側で実行権を最大 60 秒待つため、それより短いタイムアウトだと
+    // 操作が後で成功するのに呼び出し元へは失敗が返ってしまう
+    private static readonly RESERVATION_TIMEOUT = 70 * 1000;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -93,9 +99,13 @@ export default class IPCClient implements IIPCClient {
      * @param option: ClientMessageOption
      * @return MessageId
      */
-    private send<T>(option: ClientMessageOption, timeout: number = 5000): Promise<T> {
+    private send<T>(
+        option: ClientMessageOption,
+        timeout: number = option.model === ModelName.reserveation ? IPCClient.RESERVATION_TIMEOUT : 5000,
+    ): Promise<T> {
+        this.lastMessageId = this.lastMessageId === Number.MAX_SAFE_INTEGER ? 1 : this.lastMessageId + 1;
         const msg: SendMessage = {
-            id: new Date().getTime(),
+            id: this.lastMessageId,
             model: option.model,
             func: option.func,
             args: option.args,
