@@ -332,6 +332,7 @@ class RecordingUtilModel implements IRecordingUtilModel {
         }
         const jaDate = DateUtil.getJaDate(new Date(src.startAt));
 
+        // 番組名, 局名は放送データ由来のため、$& などを置換パターンとして解釈させないよう関数で渡す
         return format
             .replace(/%YEAR%/g, DateUtil.format(jaDate, 'yyyy'))
             .replace(/%SHORTYEAR%/g, DateUtil.format(jaDate, 'YY'))
@@ -343,13 +344,13 @@ class RecordingUtilModel implements IRecordingUtilModel {
             .replace(/%DOW%/g, DateUtil.format(jaDate, 'w'))
             .replace(/%TYPE%/g, channelType)
             .replace(/%CHID%/g, src.channelId?.toString(10) || 'NULL')
-            .replace(/%CHNAME%/g, channelName)
-            .replace(/%HALF_WIDTH_CHNAME%/g, halfWidthChannelName)
+            .replace(/%CHNAME%/g, () => channelName)
+            .replace(/%HALF_WIDTH_CHNAME%/g, () => halfWidthChannelName)
             .replace(/%CH%/g, channel)
             .replace(/%SID%/g, sid)
             .replace(/%ID%/g, id.toString())
-            .replace(/%TITLE%/g, programName === null ? 'NULL' : programName)
-            .replace(/%HALF_WIDTH_TITLE%/g, src.halfWidthName === null ? 'NULL' : src.halfWidthName);
+            .replace(/%TITLE%/g, () => (programName === null ? 'NULL' : programName))
+            .replace(/%HALF_WIDTH_TITLE%/g, () => (src.halfWidthName === null ? 'NULL' : src.halfWidthName));
     }
 }
 

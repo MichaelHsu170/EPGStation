@@ -44,3 +44,25 @@ test('a reservation directory that leaves the recorded root is rejected', async 
     await assert.rejects(model._getRecPath(reserve('../outside'), false), /DirectoryIsOutsideParentDirectory/);
     assert.strictEqual(fs.existsSync(path.join(root, 'outside')), false);
 });
+
+test('program and channel names are put into file names literally, even with $& in them', async () => {
+    const Reserve = require('../dist/db/entities/Reserve').default;
+    const reserve = Object.assign(new Reserve(), {
+        id: 3,
+        name: 'Price $& more',
+        halfWidthName: 'half $`',
+        channelId: 1,
+        channelType: 'GR',
+        channel: '27',
+        startAt: 0,
+        isTimeSpecified: false,
+    });
+    const model = Object.create(RecordingUtilModel.prototype);
+    model.log = { system: { warn: () => {} } };
+    model.channelDB = { findId: async () => ({ name: 'Ch $1', halfWidthName: 'h', serviceId: 1, channelType: 'GR', channel: '27' }) };
+
+    assert.strictEqual(
+        await model.formatFilePathString('%TITLE%|%HALF_WIDTH_TITLE%|%CHNAME%', reserve),
+        'Price $& more|half $`|Ch $1',
+    );
+});

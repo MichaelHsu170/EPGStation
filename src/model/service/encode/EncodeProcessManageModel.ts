@@ -196,13 +196,16 @@ class EncodeProcessManageModel implements IEncodeProcessManageModel {
         }
 
         // input, output を置換
+        // (置換文字列を関数で渡すのは、ファイル名に含まれる $& などを置換パターンとして解釈させないため)
+        const input = option.input;
+        const output = option.output;
         for (let i = 0; i < cmds.args.length; i++) {
-            if (option.input !== null) {
-                cmds.args[i] = cmds.args[i].replace(/%INPUT%/g, option.input);
+            if (input !== null) {
+                cmds.args[i] = cmds.args[i].replace(/%INPUT%/g, () => input);
             }
 
-            if (option.output !== null) {
-                cmds.args[i] = cmds.args[i].replace(/%OUTPUT%/g, option.output);
+            if (output !== null) {
+                cmds.args[i] = cmds.args[i].replace(/%OUTPUT%/g, () => output);
             }
         }
 
