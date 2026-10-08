@@ -42,6 +42,8 @@ export default class EventSetter implements IEventSetter {
     private config: IConfigFile;
 
     private isFirstreserveationUpdate: boolean = true;
+    private isUpdatingReservations: boolean = false;
+    private needsUpdateReservations: boolean = false;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -87,11 +89,30 @@ export default class EventSetter implements IEventSetter {
      */
     public set(): void {
         // EPG 更新完了イベント
+        // 実行中に EPG 更新完了が届いた場合は重ねて実行せず、終了後に 1 回だけ再実行する
+        // (重ねて実行すると予約更新同士が実行権の取得を待ち合い、タイムアウトする)
         this.epgUpdateEvent.setUpdated(async () => {
-            await this.recordedManage.historyCleanup().catch(() => {});
+            if (this.isUpdatingReservations === true) {
+                this.needsUpdateReservations = true;
 
-            await this.reservationManage.updateAll(this.isFirstreserveationUpdate);
-            this.isFirstreserveationUpdate = false;
+                return;
+            }
+
+            this.isUpdatingReservations = true;
+            do {
+                this.needsUpdateReservations = false;
+
+                await this.recordedManage.historyCleanup().catch(() => {});
+
+                try {
+                    await this.reservationManage.updateAll(this.isFirstreserveationUpdate);
+                    this.isFirstreserveationUpdate = false;
+                } catch (err: any) {
+                    this.log.system.error('all reservation update error');
+                    this.log.system.error(err);
+                }
+            } while ((this.needsUpdateReservations as boolean) === true); // ループ中に handler から true にされる
+            this.isUpdatingReservations = false;
         });
 
         // ルール追加イベント

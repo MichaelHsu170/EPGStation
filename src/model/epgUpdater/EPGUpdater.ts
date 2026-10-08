@@ -17,6 +17,7 @@ class EPGUpdater implements IEPGUpdater {
     private lastUpdatedTime: number = 0;
     private lastDeletedTime: number = 0;
     private retryCount: number = 0;
+    private isUpdating: boolean = false; // 前回の周期処理が終わっていない間は次の周期処理を開始しない
 
     private static readonly EVENT_STREAM_REONNECTION_MAX = 12;
 
@@ -80,16 +81,21 @@ class EPGUpdater implements IEPGUpdater {
         // 放送中や放送開始時刻が間近の番組は短いサイクルでDBへ保存する
         // NOTE: DB負荷などを考慮しEvent受信と同時のDB反映は見合わせる
         setInterval(async () => {
+            if (this.isUpdating === true) {
+                return;
+            }
+            this.isUpdating = true;
+
             const now = new Date().getTime();
 
             try {
                 if (this.isEventStreamAlive === true) {
                     if (tunerServerType === TunerServerType.mirakurun) {
                         // mirakurun の場合
-                        this.updateMirakurunEventStream(updateInterval, now);
+                        await this.updateMirakurunEventStream(updateInterval, now);
                     } else {
                         // mirakc の場合
-                        this.updateMirakcEvent(updateInterval, now);
+                        await this.updateMirakcEvent(updateInterval, now);
                     }
                 } else if (this.isEventStreamAlive === false && this.lastUpdatedTime + updateInterval * 1.5 <= now) {
                     await this.updateManage.updateAll();
@@ -111,6 +117,8 @@ class EPGUpdater implements IEPGUpdater {
                 });
                 this.lastDeletedTime = now;
             }
+
+            this.isUpdating = false;
         }, 10 * 1000);
     }
 
