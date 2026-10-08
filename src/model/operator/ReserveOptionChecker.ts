@@ -75,7 +75,10 @@ export default class ReserveOptionChecker implements IReserveOptionChecker {
                     typeof time.start === 'undefined' ||
                     typeof time.range === 'undefined' ||
                     0 > time.start ||
-                    0 >= time.range
+                    0 >= time.range ||
+                    // 1 日 (秒) を超える値は UI から作れず、数日にわたる予約になってチューナーを占有するため不正とする
+                    time.start >= 24 * 60 * 60 ||
+                    time.range > 24 * 60 * 60
                 ) {
                     return false;
                 }
