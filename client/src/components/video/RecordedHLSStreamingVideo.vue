@@ -260,8 +260,9 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
             return;
         }
 
-        // エンコード済み範囲か
-        if (time >= this.basePlayPosition && time <= this.basePlayPosition + super.getDuration()) {
+        // エンコード済み範囲か.
+        // シーク処理中 (dummyPlayPosition あり) はストリームが読み込まれていないので, 失敗したシークの再試行も含めて開始し直す
+        if (this.dummyPlayPosition === null && time >= this.basePlayPosition && time <= this.basePlayPosition + super.getDuration()) {
             super.setCurrentTime(time - this.basePlayPosition);
             this.onTimeupdate();
 
@@ -321,6 +322,11 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
                 }
             } catch (err) {
                 console.error(err);
+                // 後からシークされている場合は, そちらがストリームを開始するので停止も再試行もしない.
+                // 後のシークがまだ待機中 (タイマー実行前) の場合は dummyPlayPosition が後の位置になっている
+                if (this.lastSeekTime !== beforeStartStream || this.dummyPlayPosition !== time) {
+                    return;
+                }
                 await this.videoState.stop().catch(e => {
                     console.error(e);
                 });
