@@ -39,6 +39,7 @@ class EncoderModel implements IEncoderModel {
     private timerId: NodeJS.Timer | null = null; // タイムアウト検知用タイマーid
     private isCanceld: boolean = false; // キャンセルが呼び出されたか?
     private progressInfo: EncodeProgressInfo | null = null;
+    private stderrTail: string[] = []; // エンコード失敗時に出力する標準エラー出力の末尾
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -250,6 +251,10 @@ class EncoderModel implements IEncoderModel {
                 for (const line of String(data).split('\n')) {
                     if (line.trim()) {
                         this.log.encode.debug(line);
+                        this.stderrTail.push(line);
+                        if (this.stderrTail.length > EncoderModel.STDERR_TAIL_LINES) {
+                            this.stderrTail.shift();
+                        }
                     }
                 }
             });
@@ -386,6 +391,10 @@ class EncoderModel implements IEncoderModel {
         } else if (code !== 0) {
             // エンコードが正常終了しなかった
             this.log.encode.error(`encode failed: ${this.encodeOption.encodeId} ${outputFilePath}`);
+            // 失敗の原因が分かるように標準エラー出力の末尾を出力する
+            for (const line of this.stderrTail) {
+                this.log.encode.error(line);
+            }
         } else {
             // エンコード正常終了
             this.log.encode.info(`Successfully encoded: ${this.encodeOption.encodeId} ${outputFilePath}`);
@@ -464,6 +473,7 @@ namespace EncoderModel {
     export const ENCODE_FINISH_EVENT = 'encodeFinishEvent';
     export const ENCODE_PRIPORITY = 10;
     export const DEFAULT_TIMEOUT_RATE = 4.0;
+    export const STDERR_TAIL_LINES = 5; // エンコード失敗時に出力する標準エラー出力の行数
 }
 
 export default EncoderModel;
