@@ -49,3 +49,12 @@ test('the video path is passed to the thumbnail command literally, even with $& 
 
     assert.strictEqual(fs.readFileSync(out, 'utf8'), '/rec/Price $& more.m2ts');
 });
+
+test('a failed thumbnail command leaves no partial file behind', async t => {
+    // the command writes part of the image, then fails (as ffmpeg killed by the timeout does)
+    const { model, dir } = createModel(t, 'printf partial > "$2"; exit 1', '/rec/a.m2ts');
+
+    await assert.rejects(model.create(1), /CreateThumbnailExitError/);
+
+    assert.deepStrictEqual(fs.readdirSync(dir), ['ffmpeg']);
+});

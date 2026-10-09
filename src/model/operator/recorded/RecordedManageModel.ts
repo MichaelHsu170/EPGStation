@@ -38,6 +38,8 @@ export default class RecordedManageModel implements IRecordedManageModel {
     private videoUtil: IVideoUtil;
     private recordingUtilModel: IRecordingUtilModel;
 
+    private static readonly CLEANUP_SKIP_RECENT_TIME = 10 * 60 * 1000; // この時間内に更新されたファイルは掃除しない
+
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
         @inject('IConfiguration') configuration: IConfiguration,
@@ -149,7 +151,7 @@ export default class RecordedManageModel implements IRecordedManageModel {
 
         // DB からサムネイル情報削除
         if (hasThumbnails === true) {
-            this.thumbnailDB.deleteRecordedId(recordedId).catch(err => {
+            await this.thumbnailDB.deleteRecordedId(recordedId).catch(err => {
                 this.log.system.error(`falied to delete thumbnail data: ${recordedId}`);
                 this.log.system.error(err);
             });
@@ -280,7 +282,25 @@ export default class RecordedManageModel implements IRecordedManageModel {
                     // rename は既存の oldFullPath を一度に置き換えるため、先に削除しない (削除と rename の間で
                     // 落ちると録画が存在しないファイルを指したままになる). FileUtil.rename は失敗時に
                     // 移動先を削除してしまうので使わない
-                    await fsPromises.rename(newFullPath, oldFullPath);
+                    await fsPromises.rename(newFullPath, oldFullPath).catch(async err => {
+                        if (err.code !== 'EXDEV') {
+                            throw err;
+                        }
+                        // 新旧の親ディレクトリが別のファイルシステムにあると rename できないため、
+                        // 古いファイルと同じディレクトリへコピーしてから置き換え、新しいファイルを削除する
+                        const tmpPath = `${oldFullPath}.tmp`;
+                        try {
+                            await fsPromises.copyFile(newFullPath, tmpPath);
+                            await fsPromises.rename(tmpPath, oldFullPath);
+                        } catch (e: any) {
+                            await FileUtil.unlink(tmpPath).catch(() => {});
+                            throw e;
+                        }
+                        await FileUtil.unlink(newFullPath).catch(e => {
+                            this.log.system.error(`failed to delete ${newFullPath}`);
+                            this.log.system.error(e);
+                        });
+                    });
 
                     const fileSize = await FileUtil.getFileSize(oldFullPath);
                     await this.videoFileDB.updateSize(oldVideoFile.id, fileSize).catch(err => {
@@ -636,6 +656,15 @@ export default class RecordedManageModel implements IRecordedManageModel {
         // ファイル索引上に存在しないファイルを削除する
         for (const file of list.files) {
             if (typeof fileIndex[file] !== 'undefined') {
+                continue;
+            }
+
+            // エンコード中の出力など、書き込み中でまだ DB に登録されていないファイルは削除しない
+            const mtime = await FileUtil.stat(file)
+                .then(stats => stats.mtimeMs)
+                .catch(() => 0);
+            if (mtime > new Date().getTime() - RecordedManageModel.CLEANUP_SKIP_RECENT_TIME) {
+                this.log.system.info(`skip recently modified file: ${file}`);
                 continue;
             }
 

@@ -86,6 +86,12 @@ export default class RecordedApiModel implements IRecordedApiModel {
      * @return Promise<void>
      */
     public async delete(recordedId: apid.RecordedId): Promise<void> {
+        // 保護された録画は削除されないため、エンコードを止める前に確認する
+        const recorded = await this.recordedDB.findId(recordedId);
+        if (recorded !== null && recorded.isProtected === true) {
+            throw new Error('RecordedIsProtected');
+        }
+
         await this.encodeManage.cancelEncodeByRecordedId(recordedId);
 
         return this.ipc.recorded.delete(recordedId);

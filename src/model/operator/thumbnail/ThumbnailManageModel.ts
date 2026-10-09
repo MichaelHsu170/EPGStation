@@ -126,6 +126,8 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
         const endProcessing = async (code: number | null): Promise<boolean> => {
             if (code !== 0) {
                 this.log.system.error(`create thumbnail cmd error: ${code}`);
+                // 失敗 (タイムアウトでの停止を含む) で途中まで書かれたファイルは登録されないため削除する
+                await FileUtil.unlink(output).catch(() => {});
                 return false;
             }
             this.log.system.info(`create thumbnail: ${videoFileId}, ${output}`);

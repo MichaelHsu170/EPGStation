@@ -18,7 +18,7 @@ const createModel = (t, existingEncoded = []) => {
     fs.mkdirSync(dirs.B);
 
     const model = Object.create(RecordedManageModel.prototype);
-    model.log = { system: { info: () => {}, error: () => {} } };
+    model.log = { system: { info: () => {}, warn: () => {}, error: () => {} } };
     model.recordedDB = { findId: async () => ({ thumbnails: [1] }) };
     model.recordingUtilModel = { formatFilePathString: async str => str };
     model.recordedEvent = {
@@ -110,4 +110,71 @@ test('a re-encode replaces the old encoded file in its own directory and keeps i
     assert.strictEqual(fs.readFileSync(path.join(dirs.B, 'old.mkv'), 'utf8'), 'new encode');
     assert.strictEqual(fs.existsSync(path.join(dirs.A, 'new.mkv')), false);
     assert.strictEqual(fs.readFileSync(path.join(dirs.A, 'old.mkv'), 'utf8'), 'unrelated file');
+});
+
+test('a re-encode into a directory on another filesystem still replaces the old encoded file', async t => {
+    const old = { id: 7, parentDirectoryName: 'B', filePath: 'old.mkv' };
+    const { model, dirs } = createModel(t, [old]);
+    fs.writeFileSync(path.join(dirs.B, 'old.mkv'), 'old encode');
+    fs.writeFileSync(path.join(dirs.A, 'new.mkv'), 'new encode');
+    // A and B behave as two mounts: rename between them fails like rename(2) does
+    const originalRename = fs.promises.rename;
+    fs.promises.rename = async (src, dest) => {
+        if (path.dirname(src) !== path.dirname(dest)) {
+            throw Object.assign(new Error('EXDEV: cross-device link not permitted'), { code: 'EXDEV' });
+        }
+
+        return originalRename(src, dest);
+    };
+    t.after(() => {
+        fs.promises.rename = originalRename;
+    });
+
+    const id = await model.addVideoFile({
+        recordedId: 1,
+        parentDirectoryName: 'A',
+        filePath: 'new.mkv',
+        type: 'encoded',
+        name: 'H.264',
+    });
+
+    assert.strictEqual(id, 7);
+    assert.strictEqual(fs.readFileSync(path.join(dirs.B, 'old.mkv'), 'utf8'), 'new encode');
+    assert.deepStrictEqual(fs.readdirSync(dirs.A), []);
+    assert.deepStrictEqual(fs.readdirSync(dirs.B), ['old.mkv']);
+});
+
+test('file cleanup keeps a file written in the last minutes, such as an encode in progress', async t => {
+    const { model, dirs } = createModel(t);
+    model.config = { recorded: [{ name: 'A', path: dirs.A }] };
+    model.videoFileDB.findAll = async () => [];
+    fs.writeFileSync(path.join(dirs.A, 'orphan.ts'), 'old');
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    fs.utimesSync(path.join(dirs.A, 'orphan.ts'), hourAgo, hourAgo);
+    fs.writeFileSync(path.join(dirs.A, 'encoding.mkv'), 'partial');
+
+    await model.videoFileCleanup();
+
+    assert.deepStrictEqual(fs.readdirSync(dirs.A), ['encoding.mkv']);
+});
+
+test('the thumbnail rows are deleted before the recorded row that they reference', async t => {
+    const { model, dirs } = createModel(t);
+    const order = [];
+    model.config = { thumbnail: dirs.A, dropLog: dirs.B };
+    model.recordedDB = {
+        findId: async () => ({ id: 1, isProtected: false, isRecording: false, thumbnails: [{ filePath: '1.jpg' }], videoFiles: [] }),
+        deleteOnce: async () => order.push('recorded'),
+    };
+    model.thumbnailDB = {
+        deleteRecordedId: async () => {
+            await new Promise(resolve => setTimeout(resolve, 20)); // a slow DELETE
+            order.push('thumbnail');
+        },
+    };
+    model.recordedEvent.emitDeleteRecorded = () => {};
+
+    await model.delete(1);
+
+    assert.deepStrictEqual(order, ['thumbnail', 'recorded']);
 });
