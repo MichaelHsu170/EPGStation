@@ -338,23 +338,22 @@ export default class RecordedDB implements IRecordedDB {
         // keyword
         if (typeof option.keyword !== 'undefined') {
             const keywords = StrUtil.toHalf(option.keyword).split(/ /);
-            const like = this.op.getLikeStr(false);
             const valueBaseName = 'keyword';
 
             const nameAnd: string[] = [];
             const descriptionAnd: string[] = [];
             const values: any = {};
             keywords.forEach((str, i) => {
-                str = `%${str}%`;
+                str = this.op.getLikeValue(str);
 
                 // value
                 const valueName = `${valueBaseName}Name${i}`;
                 values[valueName] = str;
 
                 // name
-                nameAnd.push(`halfWidthName ${like} :${valueName}`);
+                nameAnd.push(this.op.getLikeQuery('halfWidthName', valueName, false));
                 // description
-                descriptionAnd.push(`halfWidthDescription ${like} :${valueName}`);
+                descriptionAnd.push(this.op.getLikeQuery('halfWidthDescription', valueName, false));
             });
 
             const or: string[] = [];
@@ -492,7 +491,7 @@ export default class RecordedDB implements IRecordedDB {
                 isProtected: false,
             })
             .orderBy('recorded.startAt', 'ASC')
-            .orderBy('recorded.id', 'ASC')
+            .addOrderBy('recorded.id', 'ASC')
             .leftJoinAndSelect('recorded.videoFiles', 'videoFiles')
             .leftJoinAndSelect('recorded.thumbnails', 'thumbnails')
             .leftJoinAndSelect('recorded.dropLogFile', 'dropLogFile')

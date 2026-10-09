@@ -10,5 +10,6 @@ export default interface IDBOperator {
     getRegexpStr(cs: boolean): string;
     getCSRegexpTarget(column: string): string;
     isValidRegexp(pattern: string): Promise<boolean>;
-    getLikeStr(cs: boolean): string;
+    getLikeQuery(column: string, valueName: string, cs: boolean): string;
+    getLikeValue(str: string): string;
 }

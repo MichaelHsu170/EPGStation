@@ -112,9 +112,33 @@ export default class RecordedTagDB implements IRecordedTagDB {
             throw new Error('RecordedTagIsUndefined');
         }
 
-        recorded.tags.push(tag);
+        if (recorded.tags.some(t => t.id === tag.id) === true) {
+            return;
+        }
+
+        await this.updateRelation(recordedId, [tag.id], []);
+    }
+
+    /**
+     * recorded と tag の関連付けのみを追加・削除する
+     * (recorded.save() は読み込み後に変わった録画情報 (isRecording など) を読み込んだ時点の値で書き戻してしまうため使わない)
+     * @param recordedId: RecordedId
+     * @param addTagIds: 追加する RecordedTagId
+     * @param removeTagIds: 削除する RecordedTagId
+     * @return Promise<void>
+     */
+    private async updateRelation(
+        recordedId: apid.RecordedId,
+        addTagIds: apid.RecordedTagId[],
+        removeTagIds: apid.RecordedTagId[],
+    ): Promise<void> {
+        const connection = await this.op.getConnection();
         await this.promieRetry.run(() => {
-            return recorded.save();
+            return connection
+                .createQueryBuilder()
+                .relation(Recorded, 'tags')
+                .of(recordedId)
+                .addAndRemove(addTagIds, removeTagIds);
         });
     }
 
@@ -143,15 +167,9 @@ export default class RecordedTagDB implements IRecordedTagDB {
      * @Promise<void>
      */
     public async deleteRelation(tagId: apid.RecordedTagId, recordedId: apid.RecordedId): Promise<void> {
-        const recorded = await this.findRecorded(recordedId);
+        await this.findRecorded(recordedId);
 
-        recorded.tags = recorded.tags.filter(tag => {
-            return tag.id !== tagId;
-        });
-
-        await this.promieRetry.run(() => {
-            return recorded.save();
-        });
+        await this.updateRelation(recordedId, [], [tagId]);
     }
 
     /**
@@ -162,11 +180,11 @@ export default class RecordedTagDB implements IRecordedTagDB {
     public async deleteAllRelation(recordedId: apid.RecordedId): Promise<void> {
         const recorded = await this.findRecorded(recordedId);
 
-        recorded.tags = [];
-
-        await this.promieRetry.run(() => {
-            return recorded.save();
-        });
+        await this.updateRelation(
+            recordedId,
+            [],
+            recorded.tags.map(tag => tag.id),
+        );
     }
 
     /**
@@ -226,19 +244,18 @@ export default class RecordedTagDB implements IRecordedTagDB {
         // name
         if (typeof option.name !== 'undefined') {
             const names = StrUtil.toHalf(option.name).split(/ /);
-            const like = this.op.getLikeStr(false);
 
             const nameAnd: string[] = [];
             const values: any = {};
             names.forEach((str, i) => {
-                str = `%${str}%`;
+                str = this.op.getLikeValue(str);
 
                 // value
                 const valueName = `name${i}`;
                 values[valueName] = str;
 
                 // name
-                nameAnd.push(`halfWidthName ${like} :${valueName}`);
+                nameAnd.push(this.op.getLikeQuery('halfWidthName', valueName, false));
             });
 
             const or: string[] = [];

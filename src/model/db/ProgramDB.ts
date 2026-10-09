@@ -555,27 +555,28 @@ export default class ProgramDB implements IProgramDB {
         } else {
             // あいまい検索
             const keywords = StrUtil.toHalf(keyword).split(/ /);
-            const like = this.op.getLikeStr(option.cs);
 
             const nameAnd: string[] = [];
             const descriptionAnd: string[] = [];
             const extendedAnd: string[] = [];
             keywords.forEach((str, i) => {
-                str = `%${str}%`;
+                str = this.op.getLikeValue(str);
 
                 if (option.name === true) {
                     const valueName = `${valueBaseName}Name${i}`;
-                    nameAnd.push(`halfWidthName ${like} :${valueName}`);
+                    nameAnd.push(this.op.getLikeQuery('halfWidthName', valueName, option.cs));
                     query.param[valueName] = str;
                 }
                 if (option.description === true) {
                     const valueName = `${valueBaseName}Description${i}`;
-                    descriptionAnd.push(`COALESCE(halfWidthDescription,'') ${like} :${valueName}`);
+                    descriptionAnd.push(
+                        this.op.getLikeQuery("COALESCE(halfWidthDescription,'')", valueName, option.cs),
+                    );
                     query.param[valueName] = str;
                 }
                 if (option.extended === true) {
                     const valueName = `${valueBaseName}Extended${i}`;
-                    extendedAnd.push(`COALESCE(halfWidthExtended,'') ${like} :${valueName}`);
+                    extendedAnd.push(this.op.getLikeQuery("COALESCE(halfWidthExtended,'')", valueName, option.cs));
                     query.param[valueName] = str;
                 }
             });

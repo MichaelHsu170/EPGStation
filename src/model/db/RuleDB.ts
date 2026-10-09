@@ -449,19 +449,18 @@ export default class RuleDB implements IRuleDB {
         // keyword
         if (typeof option.keyword !== 'undefined') {
             const names = StrUtil.toHalf(option.keyword).split(/ /);
-            const like = this.op.getLikeStr(false);
 
             const keywordAnd: string[] = [];
             const values: any = {};
             names.forEach((str, i) => {
-                str = `%${str}%`;
+                str = this.op.getLikeValue(str);
 
                 // value
                 const valueName = `keyword${i}`;
                 values[valueName] = str;
 
                 // keyword
-                keywordAnd.push(`halfWidthKeyword ${like} :${valueName}`);
+                keywordAnd.push(this.op.getLikeQuery('halfWidthKeyword', valueName, false));
             });
 
             const or: string[] = [];
@@ -519,19 +518,18 @@ export default class RuleDB implements IRuleDB {
         // keyword
         if (typeof option.keyword !== 'undefined') {
             const names = StrUtil.toHalf(option.keyword).split(/ /);
-            const like = this.op.getLikeStr(false);
 
             const keywordAnd: string[] = [];
             const values: any = {};
             names.forEach((str, i) => {
-                str = `%${str}%`;
+                str = this.op.getLikeValue(str);
 
                 // value
                 const valueName = `keyword${i}`;
                 values[valueName] = str;
 
                 // keyword
-                keywordAnd.push(`halfWidthKeyword ${like} :${valueName}`);
+                keywordAnd.push(this.op.getLikeQuery('halfWidthKeyword', valueName, false));
             });
 
             const or: string[] = [];
