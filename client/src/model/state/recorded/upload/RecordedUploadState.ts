@@ -221,7 +221,8 @@ class RecordedUploadState implements IRecordedUploadState {
      * @return boolean
      */
     private checkVideoFileItemInput(item: VideoFileItem): boolean {
-        if (typeof item.viewName !== 'string') {
+        // キーボードで消した場合は空文字になる. 空の名前のファイルは upload で送られない
+        if (typeof item.viewName !== 'string' || item.viewName.length === 0) {
             return false;
         }
 
