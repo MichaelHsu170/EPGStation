@@ -15,6 +15,7 @@ test('an EPG update cycle does not start while the previous one is still running
         log: { system: { info: () => {}, error: () => {} } },
         config: { epgUpdateIntervalTime: 10 },
         isEventStreamAlive: true,
+        updateStartedAt: null,
         lastUpdatedTime: 0,
         lastDeletedTime: 0,
         updateManage: { checkTunerServerType: async () => 0, deleteOldPrograms: async () => {} },
@@ -44,4 +45,78 @@ test('an EPG update cycle does not start while the previous one is still running
     assert.strictEqual(started, 2);
     assert.strictEqual(maxRunning, 1);
     releases.shift()();
+});
+
+test('an EPG update cycle that has not finished in 10 minutes no longer blocks the next one', async t => {
+    t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: 0 });
+
+    let started = 0;
+    const releases = [];
+    const errors = [];
+    const updater = Object.create(EPGUpdater.prototype);
+    Object.assign(updater, {
+        log: { system: { info: () => {}, error: e => errors.push(String(e)) } },
+        config: { epgUpdateIntervalTime: 10 },
+        isEventStreamAlive: true,
+        updateStartedAt: null,
+        lastUpdatedTime: 0,
+        lastDeletedTime: 0,
+        updateManage: { checkTunerServerType: async () => 0, deleteOldPrograms: async () => {} },
+        startEventStreamAnalysis: async () => {},
+        // the first cycle hangs (e.g. a DB query that never returns)
+        updateMirakurunEventStream: async () => {
+            started++;
+            await new Promise(resolve => releases.push(resolve));
+        },
+    });
+
+    await updater.start();
+    // ticks at 10 s .. 600 s: the first starts at 10 s, the cycle at 600 s is only 590 s later
+    for (let i = 0; i < 60; i++) {
+        t.mock.timers.tick(10 * 1000);
+        await new Promise(setImmediate);
+    }
+    assert.strictEqual(started, 1);
+    assert.deepStrictEqual(errors, []);
+
+    // 610 s: 10 minutes after the hung cycle started
+    t.mock.timers.tick(10 * 1000);
+    await new Promise(setImmediate);
+    assert.strictEqual(started, 2);
+    assert.strictEqual(errors.length, 1);
+
+    // the hung cycle finishing late does not let a third cycle overlap the second
+    releases.shift()();
+    await new Promise(setImmediate);
+    t.mock.timers.tick(10 * 1000);
+    await new Promise(setImmediate);
+    assert.strictEqual(started, 2);
+    releases.shift()();
+});
+
+test('the mirakc path waits for the full save before the cycle ends', async () => {
+    let releaseSave;
+    let saveFailed = null;
+    const updater = Object.create(EPGUpdater.prototype);
+    Object.assign(updater, {
+        log: { system: { info: () => {}, error: () => {} } },
+        lastUpdatedTime: 0,
+        updateManage: {
+            saveOnAirServices: async () => {},
+            saveUpdateServices: () =>
+                new Promise((resolve, reject) => {
+                    releaseSave = () => reject(new Error('db down'));
+                }),
+        },
+    });
+
+    const cycle = updater.updateMirakcEvent(60 * 1000, 60 * 1000).catch(err => {
+        saveFailed = err;
+    });
+    await new Promise(setImmediate);
+    assert.strictEqual(saveFailed, null);
+
+    releaseSave();
+    await cycle;
+    assert.match(String(saveFailed), /db down/);
 });

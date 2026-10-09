@@ -17,9 +17,13 @@ class EPGUpdater implements IEPGUpdater {
     private lastUpdatedTime: number = 0;
     private lastDeletedTime: number = 0;
     private retryCount: number = 0;
-    private isUpdating: boolean = false; // 前回の周期処理が終わっていない間は次の周期処理を開始しない
+    // 実行中の周期処理の開始時刻. 前回の周期処理が終わっていない間は次の周期処理を開始しない
+    private updateStartedAt: number | null = null;
 
     private static readonly EVENT_STREAM_REONNECTION_MAX = 12;
+    // 周期処理がこの時間 (ミリ秒) を超えても終わらない場合は、止まったものとみなして次の周期処理を開始する
+    // (応答のない DB や Mirakurun への要求を待ち続けて EPG 更新が止まったままにならないようにする)
+    private static readonly UPDATE_TIMEOUT = 10 * 60 * 1000;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -81,12 +85,16 @@ class EPGUpdater implements IEPGUpdater {
         // 放送中や放送開始時刻が間近の番組は短いサイクルでDBへ保存する
         // NOTE: DB負荷などを考慮しEvent受信と同時のDB反映は見合わせる
         setInterval(async () => {
-            if (this.isUpdating === true) {
-                return;
-            }
-            this.isUpdating = true;
-
             const now = new Date().getTime();
+            if (this.updateStartedAt !== null) {
+                if (now - this.updateStartedAt < EPGUpdater.UPDATE_TIMEOUT) {
+                    return;
+                }
+                this.log.system.error(
+                    `EPG update started at ${new Date(this.updateStartedAt).toISOString()} has not finished`,
+                );
+            }
+            this.updateStartedAt = now;
 
             try {
                 if (this.isEventStreamAlive === true) {
@@ -118,7 +126,10 @@ class EPGUpdater implements IEPGUpdater {
                 this.lastDeletedTime = now;
             }
 
-            this.isUpdating = false;
+            // 止まったとみなされた周期処理が後から終わった場合は、実行中の周期処理の開始時刻を消さない
+            if (this.updateStartedAt === now) {
+                this.updateStartedAt = null;
+            }
         }, 10 * 1000);
     }
 
@@ -187,7 +198,7 @@ class EPGUpdater implements IEPGUpdater {
 
         // 放映中以外の者は updateInterval の間隔で更新する
         if (this.lastUpdatedTime + updateInterval <= now) {
-            this.updateManage.saveUpdateServices().catch(e => {
+            await this.updateManage.saveUpdateServices().catch(e => {
                 this.log.system.error('failed to save update services');
                 throw e;
             });
