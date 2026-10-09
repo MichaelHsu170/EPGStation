@@ -75,7 +75,8 @@ export default class GuideDaySelectDialog extends Vue {
 
         for (let i = 0; i < 8; i++) {
             const hourStr = i === 0 ? DateUtil.format(now, 'hh') : '00';
-            const date = new Date(baseTime);
+            // 日本時間の 0 時なので, 日本より西のブラウザでも日本の日付で表示する
+            const date = DateUtil.getJaDate(new Date(baseTime));
             const value = DateUtil.format(date, 'YYMMdd' + hourStr);
             this.dayItems.push({
                 text: DateUtil.format(date, 'MM/dd(w)'),

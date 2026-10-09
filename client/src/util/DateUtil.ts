@@ -61,6 +61,16 @@ namespace DateUtil {
     };
 
     /**
+     * v-date-picker の日付文字列 (YYYY-MM-DD) の日を返す (day-format 用)
+     * new Date('YYYY-MM-DD') は UTC の 0 時になるので, getDate() では UTC より西のブラウザで前日の日になる
+     * @param date string YYYY-MM-DD
+     * @return number
+     */
+    export const getDayOfMonth = (date: string): number => {
+        return parseInt(date.split('-')[2], 10);
+    };
+
+    /**
      * JSON から戻した日時を Date にする
      * sessionStorage に保存したページ情報を再読み込み後に戻すと, Date は文字列になっている
      * @param date Date | string | null

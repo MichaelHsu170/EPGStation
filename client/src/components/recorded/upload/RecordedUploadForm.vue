@@ -50,7 +50,7 @@
                     v-model="uploadState.programOption.startAt"
                     :datePickerProps="{
                         locale: 'jp-ja',
-                        'day-format': date => new Date(date).getDate(),
+                        'day-format': getDayOfMonth,
                         'first-day-of-week': 1,
                     }"
                     :timePickerProps="{
@@ -108,6 +108,7 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import IRecordedUploadState from '@/model/state/recorded/upload/IRecordedUploadState';
+import DateUtil from '@/util/DateUtil';
 import { Component, Vue, Watch } from 'vue-property-decorator';
 
 @Component({
@@ -119,6 +120,7 @@ export default class RecordedUploadForm extends Vue {
     public uploadState: IRecordedUploadState = container.get<IRecordedUploadState>('IRecordedUploadState');
     public ruleLoading: boolean = false;
     public ruleSearchInput: string | null = null;
+    public getDayOfMonth = DateUtil.getDayOfMonth;
 
     @Watch('ruleSearchInput', { immediate: true })
     public async onChangeSearch(newKeyword: string): Promise<void> {

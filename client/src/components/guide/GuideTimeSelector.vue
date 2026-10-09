@@ -150,7 +150,8 @@ export default class GuideTimeSelector extends Vue {
         const now = DateUtil.getJaDate(new Date());
         let baseTime = new Date(DateUtil.format(now, 'yyyy/MM/dd 00:00:00 +0900')).getTime();
         for (let i = 0; i < 8; i++) {
-            const date = new Date(baseTime);
+            // 日本時間の 0 時なので, 日本より西のブラウザでも日本の日付で表示する
+            const date = DateUtil.getJaDate(new Date(baseTime));
             this.dayItems.push({
                 text: DateUtil.format(date, 'MM/dd(w)'),
                 value: DateUtil.format(date, 'YYMMdd'),

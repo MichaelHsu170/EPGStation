@@ -109,7 +109,7 @@
                             v-model="searchState.searchOption.startPeriod"
                             :datePickerProps="{
                                 locale: 'jp-ja',
-                                'day-format': date => new Date(date).getDate(),
+                                'day-format': getDayOfMonth,
                                 'first-day-of-week': 1,
                             }"
                             :timePickerProps="{
@@ -133,7 +133,7 @@
                             v-model="searchState.searchOption.endPeriod"
                             :datePickerProps="{
                                 locale: 'jp-ja',
-                                'day-format': date => new Date(date).getDate(),
+                                'day-format': getDayOfMonth,
                                 'first-day-of-week': 1,
                             }"
                             :timePickerProps="{
@@ -232,6 +232,7 @@ import SearchGenreOption from '@/components/search/SearchGenreOption.vue';
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import ISearchState from '@/model/state/search/ISearchState';
+import DateUtil from '@/util/DateUtil';
 import VuetifyUtil from '@/util/VuetifyUtil';
 import { Component, Prop, Vue } from 'vue-property-decorator';
 
@@ -246,6 +247,7 @@ export default class SearchOption extends Vue {
 
     public isOpenStartTimepicker: boolean = false;
     public isOpenEndTimepicker: boolean = false;
+    public getDayOfMonth = DateUtil.getDayOfMonth;
 
     public mounted(): void {
         if (typeof this.$refs.keyword !== 'undefined') {

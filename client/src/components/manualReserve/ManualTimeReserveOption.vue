@@ -28,7 +28,7 @@
                             :disabled="isEditMode"
                             :datePickerProps="{
                                 locale: 'jp-ja',
-                                'day-format': date => new Date(date).getDate(),
+                                'day-format': getDayOfMonth,
                                 'first-day-of-week': 1,
                             }"
                             :timePickerProps="{
@@ -52,7 +52,7 @@
                             :disabled="isEditMode"
                             :datePickerProps="{
                                 locale: 'jp-ja',
-                                'day-format': date => new Date(date).getDate(),
+                                'day-format': getDayOfMonth,
                                 'first-day-of-week': 1,
                             }"
                             :timePickerProps="{
@@ -75,6 +75,7 @@
 import SearchOptionRow from '@/components/search/SearchOptionRow.vue';
 import container from '@/model/ModelContainer';
 import IManualReserveState from '@/model/state/reserve/manual/IManualReserveState';
+import DateUtil from '@/util/DateUtil';
 import { Component, Prop, Vue } from 'vue-property-decorator';
 
 @Component({
@@ -87,5 +88,6 @@ export default class ManualTimeReserveOption extends Vue {
     public isEditMode!: boolean;
 
     private manualReserveState: IManualReserveState = container.get<IManualReserveState>('IManualReserveState');
+    public getDayOfMonth = DateUtil.getDayOfMonth;
 }
 </script>
