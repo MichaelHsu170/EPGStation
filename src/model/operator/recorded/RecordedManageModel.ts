@@ -660,11 +660,7 @@ export default class RecordedManageModel implements IRecordedManageModel {
             }
 
             // エンコード中の出力など、書き込み中でまだ DB に登録されていないファイルは削除しない
-            const mtime = await FileUtil.stat(file)
-                .then(stats => stats.mtimeMs)
-                .catch(() => 0);
-            if (mtime > new Date().getTime() - RecordedManageModel.CLEANUP_SKIP_RECENT_TIME) {
-                this.log.system.info(`skip recently modified file: ${file}`);
+            if ((await this.isRecentlyModified(file)) === true) {
                 continue;
             }
 
@@ -732,6 +728,11 @@ export default class RecordedManageModel implements IRecordedManageModel {
                 continue;
             }
 
+            // DB の一覧取得後に録画が始まったログなど、書き込み中のファイルは削除しない
+            if ((await this.isRecentlyModified(file)) === true) {
+                continue;
+            }
+
             this.log.system.info(`delete drop log file: ${file}`);
             await FileUtil.unlink(file).catch(err => {
                 this.log.system.error(`failed to drop log file: ${file}`);
@@ -740,6 +741,24 @@ export default class RecordedManageModel implements IRecordedManageModel {
         }
 
         this.log.system.info('start drop log files cleanup completed');
+    }
+
+    /**
+     * 掃除対象外とする最近更新されたファイルか (更新時刻が取れない場合は false)
+     * @param filePath: string ファイルパス
+     * @return Promise<boolean>
+     */
+    private async isRecentlyModified(filePath: string): Promise<boolean> {
+        const mtime = await FileUtil.stat(filePath)
+            .then(stats => stats.mtimeMs)
+            .catch(() => 0);
+        if (mtime > new Date().getTime() - RecordedManageModel.CLEANUP_SKIP_RECENT_TIME) {
+            this.log.system.info(`skip recently modified file: ${filePath}`);
+
+            return true;
+        }
+
+        return false;
     }
 
     /**

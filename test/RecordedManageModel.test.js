@@ -158,6 +158,20 @@ test('file cleanup keeps a file written in the last minutes, such as an encode i
     assert.deepStrictEqual(fs.readdirSync(dirs.A), ['encoding.mkv']);
 });
 
+test('drop log cleanup keeps a log written in the last minutes, such as one of a recording that just started', async t => {
+    const { model, dirs } = createModel(t);
+    model.config = { dropLog: dirs.B };
+    model.dropLogFileDB = { findAll: async () => [] };
+    fs.writeFileSync(path.join(dirs.B, 'orphan.log'), 'old');
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    fs.utimesSync(path.join(dirs.B, 'orphan.log'), hourAgo, hourAgo);
+    fs.writeFileSync(path.join(dirs.B, 'recording.log'), 'new');
+
+    await model.dropLogFileCleanup();
+
+    assert.deepStrictEqual(fs.readdirSync(dirs.B), ['recording.log']);
+});
+
 test('the thumbnail rows are deleted before the recorded row that they reference', async t => {
     const { model, dirs } = createModel(t);
     const order = [];
