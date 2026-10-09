@@ -69,7 +69,9 @@ export default class IPCServer implements IIPCServer {
     public register(child: ChildProcess): void {
         this.child = child;
 
-        this.child.on('message', async (msg: SendMessage) => {
+        // 応答は要求を受けた子プロセスへ返す (子プロセスの再起動後に、古い要求の応答を
+        // message id が 1 から振り直された新しい子プロセスへ送ると別の要求の応答として扱われるため)
+        child.on('message', async (msg: SendMessage) => {
             if (
                 typeof this.functions[msg.model] !== 'undefined' &&
                 typeof this.functions[msg.model][msg.func] !== 'undefined'
@@ -77,18 +79,18 @@ export default class IPCServer implements IIPCServer {
                 // 指定された関数が存在するなら実行
                 try {
                     const result = await this.functions[msg.model][msg.func](msg);
-                    this.replay({
+                    this.replay(child, {
                         id: msg.id,
                         result: result,
                     });
                 } catch (err: any) {
-                    this.replay({
+                    this.replay(child, {
                         id: msg.id,
                         error: err.message,
                     });
                 }
             } else {
-                this.replay({
+                this.replay(child, {
                     id: msg.id,
                     error: 'IPCFunctionError',
                 });
@@ -126,14 +128,11 @@ export default class IPCServer implements IIPCServer {
 
     /**
      * 応答メッセージ送信
+     * @param child: ChildProcess 要求を送ってきた子プロセス
      * @param msg: ReplayMessage
      */
-    private replay(msg: ReplayMessage): void {
-        if (this.child === null) {
-            throw new Error('IPCSendReplayError');
-        }
-
-        this.child.send(msg);
+    private replay(child: ChildProcess, msg: ReplayMessage): void {
+        child.send(msg);
     }
 
     /**
