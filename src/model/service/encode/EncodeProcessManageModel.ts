@@ -19,6 +19,8 @@ class EncodeProcessManageModel implements IEncodeProcessManageModel {
     private maxEncode: number;
     private childs: ChildProcessInfo[] = [];
     private listener: events.EventEmitter = new events.EventEmitter();
+    // processId 用の連番 (時刻による id は同じミリ秒に重複し得るため)
+    private lastProcessId: number = 0;
 
     constructor(@inject('ILoggerModel') logeer: ILoggerModel, @inject('IConfiguration') configure: IConfiguration) {
         this.log = logeer.getLogger();
@@ -214,7 +216,7 @@ class EncodeProcessManageModel implements IEncodeProcessManageModel {
             typeof option.spawnOption === 'undefined'
                 ? spawn(cmds.bin, cmds.args)
                 : spawn(cmds.bin, cmds.args, option.spawnOption);
-        const processId = new Date().getTime();
+        const processId = ++this.lastProcessId;
 
         // エラー発生時にプロセスを停止して this.childs から削除する
         child.on('error', async () => {
