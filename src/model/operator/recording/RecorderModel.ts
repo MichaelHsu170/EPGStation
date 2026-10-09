@@ -168,16 +168,19 @@ class RecorderModel implements IRecorderModel {
             return;
         }
 
-        this.log.system.info(`preprec: ${this.reserve.id}`);
-
         this.isPrepRecording = true;
         this.isRecording = false;
         this.isPlanToDelete = false;
 
         if (retry === 0) {
+            // 再試行は catch で 1 行ずつログに出す
+            this.log.system.info(`preprec: ${this.reserve.id}`);
             // 録画準備開始通知
             this.recordingEvent.emitStartPrepRecording(this.reserve);
         }
+
+        // Mirakurun からストリームを取得中か (catch でエラーの発生元を判別する)
+        let isGettingStream = false;
 
         // 番組ストリームを取得する
         try {
@@ -195,7 +198,9 @@ class RecorderModel implements IRecorderModel {
             }
 
             this.abortController = new AbortController();
+            isGettingStream = true;
             this.stream = await this.streamCreator.create(this.reserve, this.abortController.signal);
+            isGettingStream = false;
 
             // 録画準備のキャンセル or ストリーム取得中に予約が削除されていないかチェック
             if ((await this.reserveDB.findId(this.reserve.id)) === null) {
@@ -212,11 +217,23 @@ class RecorderModel implements IRecorderModel {
                 return;
             }
 
-            this.log.system.error(`preprec failed: ${this.reserve.id}`);
-            this.log.system.error(err);
+            // Mirakurun の再起動中などで接続できない間は、放送中である限り再試行を続ける
+            // (停止中の放送は失われ、再接続後は通常どおり新しいファイルに録画する)
+            const isRetryUntilEnd =
+                isGettingStream === true &&
+                RecorderModel.CONNECTION_ERROR_CODES.includes(err?.code) &&
+                new Date().getTime() < this.reserve.endAt;
+            if (isRetryUntilEnd === true) {
+                this.log.system.warn(
+                    `preprec failed, Mirakurun is unreachable. retry in 5 s: ${this.reserve.id} (${err.message})`,
+                );
+            } else {
+                this.log.system.error(`preprec failed: ${this.reserve.id}`);
+                this.log.system.error(err);
+            }
             // 取得済みの stream を閉じないとチューナーが番組終了まで確保されたままになる
             this.destroyStream();
-            if (retry < 3) {
+            if (retry < 3 || isRetryUntilEnd === true) {
                 // retry
                 setTimeout(() => {
                     this.prepRecord(retry + 1);
@@ -1084,6 +1101,18 @@ namespace RecorderModel {
     export const START_RECORDING_EVENT = 'StartRecordingEvent';
     export const EVENT_RELAY_CHECK_TIME = 20 * 1000; // イベントリレーの確認時間 20秒
     export const MAX_TIMER_DELAY = 2 ** 31 - 1; // setTimeout に指定できる最大の待機時間 (約 24.8 日)
+    // Mirakurun に接続できないことを表すエラーコード (ENOENT は unix socket が無い場合)
+    export const CONNECTION_ERROR_CODES = [
+        'ECONNREFUSED',
+        'ECONNRESET',
+        'ENOTFOUND',
+        'EAI_AGAIN',
+        'ETIMEDOUT',
+        'EHOSTUNREACH',
+        'ENETUNREACH',
+        'EPIPE',
+        'ENOENT',
+    ];
 }
 
 export default RecorderModel;

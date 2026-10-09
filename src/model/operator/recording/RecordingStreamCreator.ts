@@ -284,8 +284,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
         const channelStream = await mirakurun
             .getServiceStream({ id: reserve.channelId, decode: true, priority, signal: abortSignal })
             .catch(err => {
-                this.log.system.error(`stream get error ${reserve.channelId}`);
-                this.log.system.error(err);
+                // エラーは呼び出し元 (RecorderModel.prepRecord) がログに出す
                 clearTimeout(this.timerIndex[reserve.id]);
                 delete this.timerIndex[reserve.id];
                 throw err;

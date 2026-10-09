@@ -287,3 +287,161 @@ test('a reservation whose program is missing at preparation is retried, then rep
     assert.deepStrictEqual(failed, [1]);
     assert.strictEqual(model.isPrepRecording, false);
 });
+
+const connectionError = code => Object.assign(new Error(`connect ${code} 172.18.0.4:40772`), { code });
+
+// a recorder about to prepare a recording, whose stream requests go to createStream
+const createPrepModel = (reserve, createStream) => {
+    const failed = [];
+    const warnings = [];
+    const errors = [];
+    const model = Object.create(RecorderModel.prototype);
+    Object.assign(model, {
+        log: {
+            system: {
+                info: () => {},
+                warn: message => warnings.push(message),
+                error: message => errors.push(message),
+                fatal: () => {},
+            },
+        },
+        reserve,
+        isStopPrepRec: false,
+        isPrepRecording: false,
+        isRecording: false,
+        stream: null,
+        recFile: null,
+        abortController: null,
+        dropLogFileId: null,
+        eventEmitter: new (require('events').EventEmitter)(),
+        streamCreator: { create: createStream },
+        reserveDB: { findId: async () => ({ id: reserve.id }) },
+        recordingEvent: {
+            emitStartPrepRecording: () => {},
+            emitCancelPrepRecording: () => {},
+            emitPrepRecordingFailed: r => failed.push(r.id),
+        },
+        dropChecker: { stop: async () => {} },
+    });
+
+    return { model, failed, warnings, errors };
+};
+
+test('while Mirakurun is unreachable, preparation is retried every 5 s until it answers, as long as the program is on air', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    const outage = 25 * 1000; // the Mirakurun container takes about 25 s to listen again
+    const attempts = [];
+    const { model, failed, warnings, errors } = createPrepModel(
+        { id: 7, programId: null, endAt: 60 * 60 * 1000 },
+        async () => {
+            attempts.push(Date.now());
+            if (Date.now() < outage) {
+                throw connectionError(attempts.length % 2 === 0 ? 'ECONNREFUSED' : 'ENOTFOUND');
+            }
+
+            return new PassThrough();
+        },
+    );
+    let recording = 0;
+    model.doRecord = async () => {
+        recording++;
+    };
+
+    await model.prepRecord();
+    for (let i = 0; i < 5; i++) {
+        t.mock.timers.tick(5 * 1000);
+        await flushIO();
+    }
+
+    assert.deepStrictEqual(attempts, [0, 5000, 10000, 15000, 20000, 25000]);
+    assert.strictEqual(recording, 1);
+    assert.deepStrictEqual(failed, []);
+    assert.deepStrictEqual(errors, []);
+    assert.strictEqual(warnings.length, 5); // one line per retry
+    assert.match(warnings[0], /^preprec failed, Mirakurun is unreachable\. retry in 5 s: 7 \(connect ENOTFOUND /);
+});
+
+test('a reservation whose program ends while Mirakurun is unreachable is reported as failed at its end', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    let attempts = 0;
+    const { model, failed } = createPrepModel({ id: 7, programId: null, endAt: 32 * 1000 }, async () => {
+        attempts++;
+        throw connectionError('ECONNREFUSED');
+    });
+
+    await model.prepRecord();
+    for (let i = 0; i < 10; i++) {
+        t.mock.timers.tick(5 * 1000);
+        await flushIO();
+    }
+
+    // attempts at 0, 5, ..., 30 s are on air; the one at 35 s is past the end and is the last
+    assert.strictEqual(attempts, 8);
+    assert.deepStrictEqual(failed, [7]);
+    assert.strictEqual(model.isPrepRecording, false);
+});
+
+test('a stream refused for another reason than the connection keeps the 3 retries', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    let attempts = 0;
+    const { model, failed } = createPrepModel({ id: 7, programId: null, endAt: 60 * 60 * 1000 }, async () => {
+        attempts++;
+        throw new Error('Bad status respond (503 Service Unavailable).');
+    });
+
+    await model.prepRecord();
+    for (let i = 0; i < 10; i++) {
+        t.mock.timers.tick(5 * 1000);
+        await flushIO();
+    }
+
+    assert.strictEqual(attempts, 4);
+    assert.deepStrictEqual(failed, [7]);
+});
+
+test('cancelling a reservation while Mirakurun is unreachable stops the retries', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    let attempts = 0;
+    const { model, failed } = createPrepModel({ id: 7, programId: null, endAt: 60 * 60 * 1000 }, async () => {
+        attempts++;
+        throw connectionError('ECONNREFUSED');
+    });
+
+    await model.prepRecord();
+    for (let i = 0; i < 4; i++) {
+        t.mock.timers.tick(5 * 1000);
+        await flushIO();
+    }
+    const cancelling = model.cancel(false);
+    t.mock.timers.tick(5 * 1000);
+    await flushIO();
+    await cancelling;
+    for (let i = 0; i < 4; i++) {
+        t.mock.timers.tick(5 * 1000);
+        await flushIO();
+    }
+
+    assert.strictEqual(attempts, 5);
+    assert.deepStrictEqual(failed, []);
+    assert.strictEqual(model.isPrepRecording, false);
+});
+
+test('a connection error from the database, after the stream was opened, keeps the 3 retries', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    let attempts = 0;
+    const { model, failed } = createPrepModel({ id: 7, programId: null, endAt: 60 * 60 * 1000 }, async () => {
+        attempts++;
+
+        return new PassThrough();
+    });
+    model.reserveDB = { findId: async () => Promise.reject(connectionError('ECONNREFUSED')) };
+
+    await model.prepRecord();
+    for (let i = 0; i < 10; i++) {
+        t.mock.timers.tick(5 * 1000);
+        await flushIO();
+    }
+
+    assert.strictEqual(attempts, 4);
+    assert.deepStrictEqual(failed, [7]);
+});

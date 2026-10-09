@@ -84,3 +84,18 @@ test('changing a time-specified recording end time cancels the old end timer', a
     await new Promise(r => setTimeout(r, 600));
     assert.strictEqual(stream.destroyed, true);
 });
+
+test('a refused time-specified stream request is passed to the recorder without logging it again', async () => {
+    const logged = [];
+    const creator = timeSpecifiedCreator(null, [{ types: ['GR'], programs: [] }]);
+    creator.log = {
+        system: { ...silentLog.system, error: message => logged.push(message), warn: message => logged.push(message) },
+    };
+    const refused = Object.assign(new Error('connect ECONNREFUSED 172.18.0.4:40772'), { code: 'ECONNREFUSED' });
+    creator.mirakurunClientModel = { getClient: () => ({ getServiceStream: async () => Promise.reject(refused) }) };
+
+    await assert.rejects(creator.create(timeSpecifiedReserve(60 * 1000, false)), refused);
+
+    assert.deepStrictEqual(logged, []); // RecorderModel.prepRecord logs it, once per attempt
+    assert.deepStrictEqual(creator.timerIndex, {});
+});
