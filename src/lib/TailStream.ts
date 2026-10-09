@@ -51,6 +51,11 @@ class TailStream extends Readable {
 
         fs.open(this.filePath, 'r', (err, fd) => {
             if (this.isClosed) {
+                // open 中に destroy された場合は開いた fd を閉じる
+                if (!err) {
+                    fs.close(fd, () => {});
+                }
+
                 return;
             }
             assert.ok(this.getFdInProgress);
@@ -116,7 +121,7 @@ class TailStream extends Readable {
                 return;
             }
 
-            const buffer = new Buffer(size);
+            const buffer = Buffer.alloc(size);
 
             fs.read(this.fd, buffer, 0, size, start, (e, bytesRead, buff) => {
                 if (this.isClosed) {
@@ -163,11 +168,28 @@ class TailStream extends Readable {
             return;
         }
 
-        const stat = fs.statSync(this.filePath);
+        // 録画ファイルが削除・移動されていた場合は statSync が throw するので、ストリームを終了する
+        let stat: fs.Stats;
+        try {
+            stat = fs.statSync(this.filePath);
+        } catch (err: any) {
+            this.debug('error statting', err);
+            this.close();
+
+            return;
+        }
         this.checkFileTimer = setTimeout(() => {
             this.checkFileTimer = null;
 
-            const newStat = fs.statSync(this.filePath);
+            let newStat: fs.Stats;
+            try {
+                newStat = fs.statSync(this.filePath);
+            } catch (err: any) {
+                this.debug('error statting', err);
+                this.close();
+
+                return;
+            }
             if (newStat.size !== stat.size) {
                 this.doRead();
             } else {
@@ -214,6 +236,29 @@ class TailStream extends Readable {
     private close(): void {
         this.isClosed = true;
         this.push(null);
+    }
+
+    /**
+     * destroy 時 (end 後の autoDestroy を含む) に監視を止めて fd を閉じる
+     */
+    public _destroy(err: Error | null, callback: (error?: Error | null) => void): void {
+        this.isClosed = true;
+        if (this.checkFileTimer !== null) {
+            clearTimeout(this.checkFileTimer);
+            this.checkFileTimer = null;
+        }
+
+        if (!this.fd) {
+            callback(err);
+
+            return;
+        }
+
+        const fd = this.fd;
+        this.fd = 0;
+        fs.close(fd, () => {
+            callback(err);
+        });
     }
 
     private debug(str: string, err?: Error): void {
