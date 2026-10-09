@@ -336,7 +336,8 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
                 await this.videoState.stop().catch(e => {
                     console.error(e);
                 });
-                if (this.isDestroyed === true) {
+                // 停止を待つ間に画面を離れた, または後からシークされた場合も再試行しない
+                if (this.isDestroyed === true || this.lastSeekTime !== beforeStartStream || this.dummyPlayPosition !== time) {
                     return;
                 }
 

@@ -31,14 +31,18 @@ export default class LiveHLSVideo extends BaseVideo {
     public async mounted(): Promise<void> {
         // HLS stream 開始
         await this.videoState.start(this.channelId, this.mode).catch(err => {
+            // 開始待ちの間に画面を離れた場合は通知しない
+            if (this.isDestroyed === true) {
+                return;
+            }
             this.snackbarState.open({
                 color: 'error',
                 text: 'ストリーム開始に失敗',
             });
         });
 
-        // 開始に失敗した, または開始待ちの間に画面を離れて停止済みの場合は待たない
-        if (this.videoState.getStreamId() === null) {
+        // 開始に失敗した, または開始待ちの間に画面を離れた場合は待たない
+        if (this.videoState.getStreamId() === null || this.isDestroyed === true) {
             return;
         }
 
