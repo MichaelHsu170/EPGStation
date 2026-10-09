@@ -84,3 +84,45 @@ test('adding a reservation with an invalid encode mode is refused', async () => 
 
     await assert.rejects(model.add({ programId: 1, encodeOption: { mode1: 'nope', isDeleteOriginalAfterEncode: false } }), /AddReservationOptionError/);
 });
+
+/**
+ * Startup reservation update with a manual time-specified reservation still to come (7), one already over (8),
+ * a manual program reservation (9) and nothing else. getManualIds applies ReserveDB's programId filter.
+ */
+const startupUpdateModel = emitted => {
+    const now = Date.now();
+    const reserves = [
+        { id: 7, ruleId: null, programId: null, startAt: now + 3600e3, endAt: now + 7200e3 },
+        { id: 8, ruleId: null, programId: null, startAt: now - 7200e3, endAt: now - 3600e3 },
+        { id: 9, ruleId: null, programId: 123, startAt: now + 3600e3, endAt: now + 7200e3 },
+    ];
+
+    return createModel({
+        config: { isSuppressReservesUpdateAllLog: true },
+        reserveDB: {
+            getManualIds: async o => reserves.filter(r => o.hasTimeReserve || r.programId !== null).map(r => r.id),
+            getRuleEventRelayIds: async () => [],
+            findId: async id => reserves.find(r => r.id === id) ?? null,
+        },
+        ruleDB: { getIds: async () => [] },
+        programDB: { findId: async () => null },
+        reserveEvent: { emitUpdated: d => emitted.push(d) },
+    });
+};
+
+test('the first reservation update after startup arms the pending manual time-specified reservations', async () => {
+    const emitted = [];
+    await startupUpdateModel(emitted).updateAll(true);
+
+    assert.deepStrictEqual(
+        emitted.map(d => ({ insert: d.insert, update: d.update?.map(r => r.id), delete: d.delete })),
+        [{ insert: undefined, update: [7], delete: undefined }],
+    );
+});
+
+test('later reservation updates do not re-arm manual time-specified reservations', async () => {
+    const emitted = [];
+    await startupUpdateModel(emitted).updateAll(false);
+
+    assert.deepStrictEqual(emitted, []);
+});

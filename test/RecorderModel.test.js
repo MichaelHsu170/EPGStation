@@ -130,3 +130,160 @@ test('a database error when the recording starts reaches the retry and failure h
     assert.strictEqual(settled, true);
     assert.deepStrictEqual(failed, [1]);
 });
+
+const flushIO = async () => {
+    for (let i = 0; i < 20; i++) {
+        await new Promise(setImmediate);
+    }
+};
+
+test('a recording cancelled before its first data is not started again', async t => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const { EventEmitter } = require('events');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'recorder-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+
+    let streams = 0;
+    const failed = [];
+    const model = Object.create(RecorderModel.prototype);
+    Object.assign(model, {
+        log: silentLog,
+        config: { isEnabledDropCheck: false },
+        reserve: { id: 1, programId: null },
+        isStopPrepRec: false,
+        isPrepRecording: false,
+        isRecording: false,
+        isPlanToDelete: false,
+        stream: null,
+        recFile: null,
+        abortController: null,
+        dropLogFileId: null,
+        timerId: null,
+        eventEmitter: new EventEmitter(),
+        streamCreator: {
+            create: async () => {
+                streams++;
+
+                return new PassThrough();
+            },
+        },
+        reserveDB: { findId: async () => ({ id: 1 }) },
+        recordingUtil: { getRecPath: async () => ({ fullPath: path.join(dir, `rec${streams}.m2ts`) }) },
+        recordingEvent: {
+            emitStartPrepRecording: () => {},
+            emitCancelPrepRecording: () => {},
+            emitPrepRecordingFailed: reserve => failed.push(reserve.id),
+        },
+        dropChecker: { stop: async () => {} },
+    });
+
+    model.prepRecord();
+    await flushIO();
+    assert.strictEqual(model.isRecording, true); // the stream is open, waiting for its first data
+    await model.cancel(false);
+
+    t.mock.timers.tick(5 * 1000); // the first data does not come
+    await flushIO();
+    t.mock.timers.tick(5 * 1000); // the retry delay
+    await flushIO();
+
+    assert.strictEqual(streams, 1);
+    assert.deepStrictEqual(failed, []);
+    assert.strictEqual(model.isRecording, false);
+});
+
+test('a recording start whose video file could not be added removes its recorded row and retries with a new one', async () => {
+    const inserted = [];
+    const deleted = [];
+    let videoFileFailures = 1;
+    const model = Object.create(RecorderModel.prototype);
+    Object.assign(model, {
+        log: silentLog,
+        reserve: { id: 1, programId: 5, isTimeSpecified: false, name: 'n', halfWidthName: 'n', startAt: 0, endAt: 1 },
+        recordedId: null,
+        dropLogFileId: null,
+        isRecording: true,
+        stream: null,
+        recFile: null,
+        recordedDB: {
+            // like the database: an id given by the caller must be new, otherwise the next one is used
+            insertOnce: async recorded => {
+                if (typeof recorded.id !== 'undefined') {
+                    throw new Error(`ER_DUP_ENTRY ${recorded.id}`);
+                }
+                inserted.push(100 + inserted.length);
+
+                return inserted[inserted.length - 1];
+            },
+            deleteOnce: async id => {
+                deleted.push(id);
+            },
+        },
+        videoFileDB: {
+            insertOnce: async () => {
+                if (videoFileFailures-- > 0) {
+                    throw new Error('db down');
+                }
+
+                return 7;
+            },
+        },
+    });
+    const recPath = { parendDir: { name: 'recorded' }, subDir: '', fileName: 'a.m2ts', fullPath: '/nonexistent/a.m2ts' };
+
+    await assert.rejects(model.addRecorded(recPath), /AddRecordedDBError/);
+    assert.deepStrictEqual(deleted, [100]);
+    assert.strictEqual(model.recordedId, null);
+
+    const recorded = await model.addRecorded(recPath);
+    assert.strictEqual(recorded.id, 101);
+    assert.strictEqual(model.videoFileId, 7);
+});
+
+test('a reservation whose program is missing at preparation is retried, then reported as failed', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let lookups = 0;
+    let streams = 0;
+    const failed = [];
+    const model = Object.create(RecorderModel.prototype);
+    Object.assign(model, {
+        log: silentLog,
+        reserve: { id: 1, programId: 5 },
+        isStopPrepRec: false,
+        stream: null,
+        recFile: null,
+        abortController: null,
+        dropLogFileId: null,
+        eventEmitter: { emit: () => {} },
+        programDB: {
+            findId: async () => {
+                lookups++;
+
+                return null;
+            },
+        },
+        streamCreator: {
+            create: async () => {
+                streams++;
+
+                return new PassThrough();
+            },
+        },
+        recordingEvent: { emitStartPrepRecording: () => {}, emitPrepRecordingFailed: reserve => failed.push(reserve.id) },
+    });
+
+    await model.prepRecord();
+    for (let i = 0; i < 3; i++) {
+        assert.deepStrictEqual(failed, []);
+        t.mock.timers.tick(5 * 1000);
+        await new Promise(setImmediate);
+    }
+
+    assert.strictEqual(lookups, 4);
+    assert.strictEqual(streams, 0);
+    assert.deepStrictEqual(failed, [1]);
+    assert.strictEqual(model.isPrepRecording, false);
+});

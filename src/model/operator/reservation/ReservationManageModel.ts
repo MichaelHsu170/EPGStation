@@ -1195,7 +1195,39 @@ class ReservationManageModel implements IReservationManageModel {
             await Util.sleep(10);
         }
 
+        // 初回更新時は手動時刻指定予約の録画タイマーを生成させる
+        // (録画タイマーはメモリ上にしか無く、手動時刻指定予約は上記のどの更新でも差分にならないため)
+        if (isFirstUpdate === true) {
+            await this.armManualTimeReserves(isSuppressLog).catch(err => {
+                this.log.system.error('arm manual time reservations error');
+                this.log.system.error(err);
+            });
+        }
+
         this.log.system.info('all reservation update finish');
+    }
+
+    /**
+     * 終了時刻前の手動時刻指定予約を更新として通知し、録画タイマーを生成させる
+     * @param isSuppressLog: boolean
+     */
+    private async armManualTimeReserves(isSuppressLog: boolean): Promise<void> {
+        const manualIds = await this.reserveDB.getManualIds({ hasTimeReserve: true });
+        const now = new Date().getTime();
+        const reserves: Reserve[] = [];
+        for (const id of manualIds) {
+            const reserve = await this.reserveDB.findId(id);
+            if (reserve !== null && reserve.programId === null && reserve.endAt > now) {
+                reserves.push(reserve);
+            }
+        }
+
+        if (reserves.length > 0) {
+            this.reserveEvent.emitUpdated({
+                update: reserves,
+                isSuppressLog: isSuppressLog,
+            });
+        }
     }
 
     /**

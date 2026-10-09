@@ -34,6 +34,8 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
     private mirakurunClientModel: IMirakurunClientModel;
     private tuners: TunerStatus[] = [];
     private timerIndex: TimerIndex = {};
+    // 時刻指定予約の stream (tuner 未割当 (conflict など) でも終了時刻に停止できるよう tuners とは別に保持する)
+    private timeSpecifiedStreams: { [reserveId: number]: http.IncomingMessage } = {};
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -295,6 +297,13 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
             delete this.timerIndex[reserve.id];
         });
 
+        this.timeSpecifiedStreams[reserve.id] = channelStream;
+        channelStream.once('close', () => {
+            if (this.timeSpecifiedStreams[reserve.id] === channelStream) {
+                delete this.timeSpecifiedStreams[reserve.id];
+            }
+        });
+
         // 予約時間まで待つ
         if (now < reserve.startAt) {
             channelStream.on('data', () => {}); // 読み込まないと stream がバッファに貯まるため
@@ -322,6 +331,11 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
             }
         }
 
+        if (stream === null) {
+            // tuner 未割当の時刻指定予約
+            stream = this.timeSpecifiedStreams[reserve.id] ?? null;
+        }
+
         if (stream !== null) {
             stream.destroy();
             stream.push(null); // eof 通知
@@ -338,6 +352,7 @@ export default class RecordingStreamCreator implements IRecordingStreamCreator {
         }
 
         // timer 再設定
+        clearTimeout(this.timerIndex[reserve.id]);
         this.timerIndex[reserve.id] = setTimeout(
             () => {
                 this.destroyStream(reserve);

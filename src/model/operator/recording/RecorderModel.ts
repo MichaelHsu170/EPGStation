@@ -189,8 +189,8 @@ class RecorderModel implements IRecorderModel {
                     this.log.system.warn(
                         `the program data does not found in database. retry later, (reerveId: ${this.reserve.id}, programId: ${this.reserve.programId})`,
                     );
-                    this.emitCancelEvent();
-                    return;
+                    // 下の catch で再試行し、見つからないままなら録画準備失敗を通知する
+                    throw new Error('ProgramIsNotFound');
                 }
             }
 
@@ -473,6 +473,15 @@ class RecorderModel implements IRecorderModel {
             this.log.system.error('add recorded DB error');
             this.log.system.error(err);
             this.destroyStream();
+
+            // 登録済みの recorded を削除し、再試行時は新しい id で登録させる (同じ id での登録は重複エラーになる)
+            if (this.recordedId !== null) {
+                await this.recordedDB.deleteOnce(this.recordedId).catch(e => {
+                    this.log.system.error(`delete recorded error: ${this.recordedId}`);
+                    this.log.system.error(e);
+                });
+                this.recordedId = null;
+            }
 
             // delete file
             await FileUtil.unlink(recPath.fullPath).catch(err => {
@@ -813,6 +822,8 @@ class RecorderModel implements IRecorderModel {
         } else if (this.isRecording === true) {
             this.log.system.info(`stop recording: ${this.reserve.id}`);
             // 録画中
+            // 最初のデータ受信前 (録画開始のタイムアウト待ち) のキャンセルで prepRecord が再試行しないようにする
+            this.isStopPrepRec = true;
             if (this.stream !== null) {
                 this.stream.destroy();
                 this.stream.push(null); // eof 通知

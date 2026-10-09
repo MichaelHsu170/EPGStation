@@ -110,6 +110,7 @@ class RecordingManageModel implements IRecordingManageModel {
 
     /**
      * 起動時に録画中に停止してしまった録画情報を録画中から録画済みに移行させる
+     * 番組がまだ放送中なら予約を残して新しいファイルへの録画を再開する
      * @return Promise<void>
      */
     public async cleanup(): Promise<void> {
@@ -176,10 +177,24 @@ class RecordingManageModel implements IRecordingManageModel {
                 }
             }
 
+            // 番組がまだ放送中なら予約は削除せずに残す
+            const isOnAir = reserve.endAt > new Date().getTime();
+
             // 終了処理
             const newRecorded = await this.recordedDB.findId(r.id);
             if (newRecorded !== null) {
-                this.recordingEvent.emitFinishRecording(reserve, newRecorded, true);
+                this.recordingEvent.emitFinishRecording(reserve, newRecorded, !isOnAir);
+            }
+
+            // 放送中なら録画を再開する (中断前の録画はそのまま残し、新しいファイルに録画する)
+            if (isOnAir === true) {
+                const recorder = await this.provider();
+                if (recorder.setTimer(reserve, false) === true) {
+                    this.log.system.info(`resume recording: ${reserve.id}`);
+                    this.recordingIndex[reserve.id] = recorder;
+                } else {
+                    this.log.system.error(`resume recording error: ${reserve.id}`);
+                }
             }
         }
 
