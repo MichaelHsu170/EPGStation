@@ -93,10 +93,12 @@ export const responseFile = (
         return;
     }
 
-    const start: number = rangeRequest.Start;
+    // ファイルより長い末尾指定 (bytes=-N, N > ファイルサイズ) は RFC 7233 に従いファイル全体を返す
+    const start: number = Math.max(rangeRequest.Start, 0);
     const end: number = rangeRequest.End;
 
-    if (start >= stat.size || end >= stat.size) {
+    // start > end (bytes=5-2) は満たせない範囲として扱う
+    if (start >= stat.size || end >= stat.size || start > end) {
         responseHeaders['Content-Range'] = 'bytes */' + stat.size;
         sendResponse(416, req, res, responseHeaders, null);
 
@@ -104,7 +106,7 @@ export const responseFile = (
     }
 
     responseHeaders['Content-Range'] = `bytes ${start}-${end}/${stat.size}`;
-    responseHeaders['Content-Length'] = start === end ? 0 : end - start + 1;
+    responseHeaders['Content-Length'] = end - start + 1;
     responseHeaders['Accept-Ranges'] = 'bytes';
 
     const option = { start: start, end: end };
@@ -157,6 +159,11 @@ const sendResponse = (
     } else {
         readable.on('open', () => {
             readable.pipe(res);
+        });
+
+        // 読み込みエラー時は応答を切断する (error を処理しないとプロセスの例外になる)
+        readable.on('error', () => {
+            res.destroy();
         });
 
         readable.on('end', () => {

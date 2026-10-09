@@ -54,7 +54,10 @@ class StreamManageModel implements IStreamManageModel {
         // stream 停止時に停止させる
         stream.setExitStream(async () => {
             finalize();
-            await this.stop(streamId).catch();
+            await this.stop(streamId).catch(err => {
+                this.log.stream.error(`stop stream error: ${streamId}`);
+                this.log.stream.error(err);
+            });
         });
 
         finalize();

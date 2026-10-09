@@ -56,7 +56,8 @@ export default class HLSFileDeleterModel implements IHLSFileDeleterModel {
 
         for (let i = 0; i < targetFiles.length - fileNum; i++) {
             if (typeof targetFiles[i] !== 'undefined' && targetFiles[i] !== '.gitkeep') {
-                await FileUtil.unlink(`${this.option.streamFilePath}/${targetFiles[i]}`).catch();
+                // ffmpeg が先に削除していることがあるため、削除の失敗で残りのファイルの削除を止めない
+                await FileUtil.unlink(`${this.option.streamFilePath}/${targetFiles[i]}`).catch(() => {});
                 this.log.stream.info(`deleted ${targetFiles[i]}`);
             }
         }
