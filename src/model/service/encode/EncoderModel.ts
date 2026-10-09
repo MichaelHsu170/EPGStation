@@ -250,7 +250,12 @@ class EncoderModel implements IEncoderModel {
             this.childProcess.stderr.on('data', data => {
                 for (const line of String(data).split('\n')) {
                     if (line.trim()) {
-                        this.log.encode.debug(line);
+                        // エンコードスクリプト自身の結論 (1 行) は info, ffmpeg の進捗などは debug に出力する
+                        if (line.startsWith(EncoderModel.SCRIPT_MESSAGE_PREFIX) === true) {
+                            this.log.encode.info(line);
+                        } else {
+                            this.log.encode.debug(line);
+                        }
                         this.stderrTail.push(line);
                         if (this.stderrTail.length > EncoderModel.STDERR_TAIL_LINES) {
                             this.stderrTail.shift();
@@ -474,6 +479,7 @@ namespace EncoderModel {
     export const ENCODE_PRIPORITY = 10;
     export const DEFAULT_TIMEOUT_RATE = 4.0;
     export const STDERR_TAIL_LINES = 5; // エンコード失敗時に出力する標準エラー出力の行数
+    export const SCRIPT_MESSAGE_PREFIX = 'enc.js:'; // エンコードスクリプト (docker-mirakurun-epgstation の enc.js) の結論の行頭
 }
 
 export default EncoderModel;

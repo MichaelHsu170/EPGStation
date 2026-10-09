@@ -49,7 +49,9 @@ const startEncode = async t => {
     const logs = { info: [], error: [] };
     const model = Object.create(EncoderModel.prototype);
     Object.assign(model, {
-        log: { encode: { info: l => logs.info.push(String(l)), error: l => logs.error.push(String(l)), debug: () => {} } },
+        log: {
+            encode: { info: l => logs.info.push(String(l)), error: l => logs.error.push(String(l)), debug: () => {} },
+        },
         listener: new EventEmitter(),
         encodeOption: null,
         childProcess: null,
@@ -58,7 +60,17 @@ const startEncode = async t => {
         stderrTail: [],
         configure: { getConfig: () => ({ encode: [{ name: 'H264', cmd: 'enc' }] }) },
         videoFileDB: { findId: async () => ({}) },
-        recordedDB: { findId: async () => ({ id: 1, channelId: 2, name: 'n', halfWidthName: 'n', startAt: 0, endAt: 1, duration: 60000 }) },
+        recordedDB: {
+            findId: async () => ({
+                id: 1,
+                channelId: 2,
+                name: 'n',
+                halfWidthName: 'n',
+                startAt: 0,
+                endAt: 1,
+                duration: 60000,
+            }),
+        },
         channelDB: { findId: async () => ({}) },
         videoUtil: { getFullFilePathFromId: async () => input },
         processManager: { create: async () => child },
@@ -92,4 +104,24 @@ test('a successful encode does not log its stderr as errors', async t => {
 
     assert.strictEqual(await finished, false);
     assert.deepStrictEqual(logs.error, []);
+});
+
+test("the encode script's own messages are logged at info, the rest of stderr is not", async t => {
+    const { child, logs, finished } = await startEncode(t);
+
+    child.stderr.write('frame=1 fps=30\n');
+    child.stderr.write('enc.js: output is 3596.793s, input is 3606.973s: ffmpeg closed up 10.176s of timestamp gaps\n');
+    child.stderr.write('[aac @ 0x1] Qavg: 1118.254\n');
+    await new Promise(setImmediate);
+    child.emit('exit', 0, null);
+
+    assert.strictEqual(await finished, false);
+    assert.deepStrictEqual(
+        logs.info.filter(l => l.startsWith('enc.js:')),
+        ['enc.js: output is 3596.793s, input is 3606.973s: ffmpeg closed up 10.176s of timestamp gaps'],
+    );
+    assert.deepStrictEqual(
+        logs.info.filter(l => l.includes('frame=') || l.includes('Qavg')),
+        [],
+    );
 });
