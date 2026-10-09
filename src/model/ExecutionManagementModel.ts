@@ -16,6 +16,8 @@ class ExecutionManagementModel implements IExecutionManagementModel {
     private lockId: string | null = null;
     private exeQueue: ExeQueueData[] = [];
     private exeEventEmitter: events.EventEmitter = new events.EventEmitter();
+    // 実行権 id 用の連番 (時刻と乱数による id は同じミリ秒に重複し得るため)
+    private lastId: number = 0;
 
     constructor(@inject('ILoggerModel') logger: ILoggerModel) {
         this.log = logger.getLogger();
@@ -23,7 +25,7 @@ class ExecutionManagementModel implements IExecutionManagementModel {
 
     public getExecution(priority: number, timeout: number = 1000 * 60): Promise<ExecutionId> {
         const exeQueueData: ExeQueueData = {
-            id: new Date().getTime().toString(16) + Math.floor(1000 * Math.random()).toString(16),
+            id: (++this.lastId).toString(16),
             priority: priority,
         };
 
