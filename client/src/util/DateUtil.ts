@@ -50,8 +50,24 @@ namespace DateUtil {
      */
     export const getJaDate = (localDate: Date): Date => {
         const offSet = localDate.getTimezoneOffset() * 60 * 1000 + 1000 * 60 * 60 * 9;
+        const jaDate = new Date(localDate.getTime() + offSet);
 
-        return new Date(localDate.getTime() + offSet);
+        // ずらした先で夏時間が切り替わる場合は、ずらした先の時差でずらし直す.
+        // ずらす前の時差のままだと表示が 1 時間ずれ、getTimeFromJaDate() で戻した時刻も 1 時間ずれる
+        // (日本時間のブラウザは時差が変わらないので結果は同じ)
+        const jaOffSet = jaDate.getTimezoneOffset() * 60 * 1000 + 1000 * 60 * 60 * 9;
+
+        return new Date(localDate.getTime() + jaOffSet);
+    };
+
+    /**
+     * JSON から戻した日時を Date にする
+     * sessionStorage に保存したページ情報を再読み込み後に戻すと, Date は文字列になっている
+     * @param date Date | string | null
+     * @return Date | null
+     */
+    export const restoreDate = (date: Date | string | null): Date | null => {
+        return typeof date === 'string' ? new Date(date) : date;
     };
 
     /**

@@ -62,3 +62,53 @@ test('switching a program reservation to time specified fills in the JST times',
     assert.strictEqual(DateUtil.format(state.timeSpecifiedOption.startAt, 'MM/dd hh:mm'), '01/15 20:00');
     assert.strictEqual(DateUtil.format(state.timeSpecifiedOption.endAt, 'MM/dd hh:mm'), '01/15 20:54');
 });
+
+// New York changes to daylight saving time on 2026-03-08 at 07:00 UTC and back on 2026-11-01 at 06:00 UTC
+
+test('getJaDate shows the JST time when the shift crosses the change to daylight saving time', () => {
+    const time = Date.parse('2026-03-07T20:00:00Z'); // 2026-03-08 05:00 JST
+    const jaDate = DateUtil.getJaDate(new Date(time));
+
+    assert.strictEqual(DateUtil.format(jaDate, 'yyyy/MM/dd hh:mm'), '2026/03/08 05:00');
+    assert.strictEqual(DateUtil.getTimeFromJaDate(jaDate), time);
+});
+
+test('getJaDate shows the JST time when the shift crosses the change back to standard time', () => {
+    const time = Date.parse('2026-10-31T17:00:00Z'); // 2026-11-01 02:00 JST
+    const jaDate = DateUtil.getJaDate(new Date(time));
+
+    assert.strictEqual(DateUtil.format(jaDate, 'yyyy/MM/dd hh:mm'), '2026/11/01 02:00');
+    assert.strictEqual(DateUtil.getTimeFromJaDate(jaDate), time);
+});
+
+test('getTimeFromJaDate reads a time entered on a daylight saving time change day as JST', () => {
+    assert.strictEqual(DateUtil.getTimeFromJaDate(new Date(2026, 2, 8, 5, 0)), Date.parse('2026-03-07T20:00:00Z'));
+    assert.strictEqual(DateUtil.getTimeFromJaDate(new Date(2026, 10, 1, 2, 0)), Date.parse('2026-10-31T17:00:00Z'));
+});
+
+test('restoreDate turns a date that went through JSON back into the same Date', () => {
+    const restored = DateUtil.restoreDate(JSON.parse(JSON.stringify({ startAt: new Date(startAt) })).startAt);
+
+    assert.ok(restored instanceof Date);
+    assert.strictEqual(restored.getTime(), startAt);
+});
+
+test('restoreDate keeps a Date and null as they are', () => {
+    const date = new Date(startAt);
+
+    assert.strictEqual(DateUtil.restoreDate(date), date);
+    assert.strictEqual(DateUtil.restoreDate(null), null);
+});
+
+test('a time reservation restored from saved page info after a reload is saved at its time', async () => {
+    const added = [];
+    const state = new ManualReserveState(null, { add: async option => added.push(option) }, null, null, null);
+    state.isTimeSpecification = true;
+    const saved = JSON.parse(JSON.stringify({ name: 'News', channelId: 1, startAt: new Date(2024, 0, 15, 20, 0), endAt: new Date(2024, 0, 15, 20, 54) }));
+    state.timeSpecifiedOption = { ...saved, startAt: DateUtil.restoreDate(saved.startAt), endAt: DateUtil.restoreDate(saved.endAt) };
+
+    await state.addReserve();
+
+    assert.strictEqual(added[0].timeSpecifiedOption.startAt, startAt);
+    assert.strictEqual(added[0].timeSpecifiedOption.endAt, endAt);
+});

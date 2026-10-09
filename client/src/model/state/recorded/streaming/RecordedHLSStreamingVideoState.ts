@@ -14,7 +14,7 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
     private keepTimerId: number | undefined;
     private isStopRequested: boolean = false;
 
-    private isStarting: boolean = false;
+    private startingPromise: Promise<void> | null = null; // 実行中の startStream()
 
     constructor(
         @inject('IStreamApiModel') streamApiModel: IStreamApiModel,
@@ -34,23 +34,43 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
      * @return Promise<void>
      */
     public async start(videoFileId: apid.VideoFileId, playPosition: number, mode: number): Promise<void> {
-        if (this.isStarting === true) {
-            return;
+        // 開始待ちの間に start が呼ばれた (シーク中に再度シークした) 場合は, 前の開始が終わってから開始し直す.
+        // 何もせずに戻ると, ストリームが無いまま呼び出し元が待ち続ける
+        if (this.startingPromise !== null) {
+            // それまでの stop 要求は, startStream() の stop() で前のストリームを止めて満たす
+            this.isStopRequested = false;
+            while (this.startingPromise !== null) {
+                await this.startingPromise.catch(() => {});
+            }
+
+            // 待っている間に stop が呼ばれた (画面を離れた) 場合は開始しない
+            if ((this.isStopRequested as boolean) === true) {
+                return;
+            }
         }
 
+        this.startingPromise = this.startStream(videoFileId, playPosition, mode);
+        try {
+            await this.startingPromise;
+        } finally {
+            this.startingPromise = null;
+        }
+    }
+
+    /**
+     * ストリーム開始 (start() から 1 つずつ実行される)
+     * @param videoFileId: apid.VideoFileId
+     * @param playPosition: number 再生位置
+     * @param mode: number
+     * @return Promise<void>
+     */
+    private async startStream(videoFileId: apid.VideoFileId, playPosition: number, mode: number): Promise<void> {
         if (this.streamId !== null) {
             await this.stop();
         }
 
         this.isStopRequested = false;
-        this.isStarting = true;
-        try {
-            this.streamId = await this.streamApiModel.startRecordedHLS(videoFileId, playPosition, mode);
-            this.isStarting = false;
-        } catch (err) {
-            this.isStarting = false;
-            throw err;
-        }
+        this.streamId = await this.streamApiModel.startRecordedHLS(videoFileId, playPosition, mode);
 
         // 開始待ちの間に stop が呼ばれていた (画面を離れた) 場合は、ここでストリームを止める.
         // そのままだと keep し続けるタイマーが残り、タブを閉じるまでチューナーが確保され続ける

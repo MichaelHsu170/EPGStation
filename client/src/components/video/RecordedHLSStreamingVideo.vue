@@ -110,15 +110,19 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
                 return;
             }
 
-            // ストリームが有効になるまで待つ
-            this.checkEnabledTimerId = setInterval(async () => {
+            // ストリームが有効になるまで待つ.
+            // 待っている間にシークされた場合は前の確認を止める (前の待ちは resolve されないが, 呼び出し元は lastSeekTime で戻る)
+            // 各タイマーは自分の id を止める. checkEnabledTimerId は最後のタイマーの id に上書きされている
+            clearInterval(this.checkEnabledTimerId);
+            const timerId = setInterval(async () => {
                 if ((await this.videoState.isEnabled()) === false || this.isDestroyed === true) {
                     return;
                 }
 
-                clearInterval(this.checkEnabledTimerId);
+                clearInterval(timerId);
                 resolve();
             }, 1000);
+            this.checkEnabledTimerId = timerId;
         });
     }
 
@@ -302,6 +306,10 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
                 await this.videoState.start(this.videoFileId, this.basePlayPosition, this.mode);
                 if (this.lastSeekTime !== beforeStartStream) {
                     return;
+                }
+                // ストリームが無いと waitForEnabled が終わらないので, 失敗として再試行する
+                if (this.videoState.getStreamId() === null) {
+                    throw new Error('StreamIdIsNull');
                 }
                 await this.waitForEnabled();
                 if (this.lastSeekTime !== beforeStartStream || (this.isDestroyed as boolean) === true) {

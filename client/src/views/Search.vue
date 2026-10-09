@@ -30,6 +30,7 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import ISearchState, { EncodedOption, QuerySearchOption, ReserveOption, SaveOption, SearchOption, TimeReserveOption } from '@/model/state/search/ISearchState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
+import DateUtil from '@/util/DateUtil';
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
 import { Component, Vue, Watch } from 'vue-property-decorator';
@@ -379,6 +380,11 @@ export default class Search extends Vue {
                     if (pageInfo !== null) {
                         this.searchState.isTimeSpecification = pageInfo.isTimeSpecification;
                         this.searchState.searchOption = cloneDeep(pageInfo.searchOption);
+                        // 再読み込み後に sessionStorage から戻した場合は日時が文字列になっている
+                        if (this.searchState.searchOption !== null) {
+                            this.searchState.searchOption.startPeriod = DateUtil.restoreDate(this.searchState.searchOption.startPeriod);
+                            this.searchState.searchOption.endPeriod = DateUtil.restoreDate(this.searchState.searchOption.endPeriod);
+                        }
                         this.searchState.timeReserveOption = cloneDeep(pageInfo.timeReserveOption);
                         this.searchState.reserveOption = cloneDeep(pageInfo.reserveOption);
                         this.searchState.saveOption = cloneDeep(pageInfo.saveOption);

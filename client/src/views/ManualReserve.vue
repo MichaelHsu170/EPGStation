@@ -24,6 +24,7 @@ import IScrollPositionState from '@/model/state/IScrollPositionState';
 import IManualReserveState, { EncodedOption, ManualReserveOption, ManualSaveOption, TimeSpecifiedOption } from '@/model/state/reserve/manual/IManualReserveState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import { ISettingStorageModel, ISettingValue } from '@/model/storage/setting/ISettingStorageModel';
+import DateUtil from '@/util/DateUtil';
 import Util from '@/util/Util';
 import { cloneDeep } from 'lodash';
 import { Component, Vue, Watch } from 'vue-property-decorator';
@@ -251,6 +252,9 @@ export default class ManualReserve extends Vue {
                     if (pageInfo !== null) {
                         this.manualReserveState.isTimeSpecification = pageInfo.isTimeSpecification;
                         this.manualReserveState.timeSpecifiedOption = cloneDeep(pageInfo.timeSpecifiedOption);
+                        // 再読み込み後に sessionStorage から戻した場合は日時が文字列になっている
+                        this.manualReserveState.timeSpecifiedOption.startAt = DateUtil.restoreDate(pageInfo.timeSpecifiedOption.startAt);
+                        this.manualReserveState.timeSpecifiedOption.endAt = DateUtil.restoreDate(pageInfo.timeSpecifiedOption.endAt);
                         this.manualReserveState.reserveOption = cloneDeep(pageInfo.reserveOption);
                         this.manualReserveState.saveOption = cloneDeep(pageInfo.saveOption);
                         this.manualReserveState.encodeOption = cloneDeep(pageInfo.encodeOption);

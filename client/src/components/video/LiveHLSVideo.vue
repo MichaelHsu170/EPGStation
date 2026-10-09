@@ -42,13 +42,16 @@ export default class LiveHLSVideo extends BaseVideo {
             return;
         }
 
-        // ストリームが有効になるまで待つ
+        // ストリームが有効になるまで待つ.
+        // isEnabled の応答に 1 秒以上かかると確認が重なるので, プレイヤーの開始は 1 回だけにする
+        let isStarted = false;
         this.checkEnabledTimerId = setInterval(async () => {
             // 確認中に画面を離れた場合は再生を開始しない
-            if ((await this.videoState.isEnabled()) === false || this.isDestroyed === true) {
+            if ((await this.videoState.isEnabled()) === false || this.isDestroyed === true || isStarted === true) {
                 return;
             }
 
+            isStarted = true;
             clearInterval(this.checkEnabledTimerId);
             super.mounted();
         }, 1000);
