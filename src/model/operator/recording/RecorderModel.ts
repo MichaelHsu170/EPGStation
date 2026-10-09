@@ -401,7 +401,15 @@ class RecorderModel implements IRecorderModel {
                 }
 
                 // 番組情報追加
-                const recorded = await this.addRecorded(recPath);
+                // (失敗を reject しないと prepRecord が終わらず、再試行も失敗通知も行われない)
+                let recorded: Recorded;
+                try {
+                    recorded = await this.addRecorded(recPath);
+                } catch (err: any) {
+                    reject(err);
+
+                    return;
+                }
 
                 // 終了処理セット
                 if (this.stream !== null) {

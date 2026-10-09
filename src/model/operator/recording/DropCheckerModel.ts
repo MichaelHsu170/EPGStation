@@ -45,6 +45,13 @@ class DropCheckerModel implements IDropCheckerModel {
      * @return Promise<void>
      */
     public async start(logDirPath: string, srcFilePath: string, readableStream: stream.Readable): Promise<void> {
+        // 録画の再試行では同じインスタンスで start() が再度呼ばれるため、前回の状態を消す
+        this.finishing = null;
+        this.result = null;
+        this.hasError = false;
+        this.time = null;
+        this.pidIndex = {};
+
         this.dest = await this.getLogFilePath(logDirPath, srcFilePath);
 
         // 空ファイル生成

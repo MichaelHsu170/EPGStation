@@ -108,3 +108,35 @@ test('a failed rule reservation update is logged, not left as an unhandled rejec
     assert.deepStrictEqual(unhandled, []);
     assert.strictEqual(errors.filter(e => e.includes('Regex error')).length, 4);
 });
+
+test('a failed cancel after a failed recording preparation is logged, not left as an unhandled rejection', async () => {
+    const errors = [];
+    const handlers = {};
+    const setter = Object.create(EventSetter.prototype);
+    Object.assign(setter, {
+        log: { system: { error: e => errors.push(String(e)) } },
+        ipc: { notifyClient: () => {} },
+        epgUpdateEvent: { setUpdated: () => {} },
+        recordingEvent: new Proxy({}, { get: (_, key) => cb => (handlers[key] = cb) }),
+        reservationManage: { cancel: async () => Promise.reject(new Error('GetExecutionTimeoutError')) },
+        externalCommandManage: { addRecordingPrepRecFailedCmd: () => {} },
+    });
+    const noop = () => {};
+    for (const key of ['encodeEvent', 'ruleEvent', 'reserveEvent', 'recordedEvent', 'recordedTagEvent', 'thumbnailEvent']) {
+        setter[key] = new Proxy({}, { get: () => noop });
+    }
+    setter.set();
+
+    const unhandled = [];
+    const onUnhandled = err => unhandled.push(err);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+        handlers.setPrepRecordingFailed({ id: 1 });
+        await new Promise(setImmediate);
+    } finally {
+        process.off('unhandledRejection', onUnhandled);
+    }
+
+    assert.deepStrictEqual(unhandled, []);
+    assert.strictEqual(errors.filter(e => e.includes('GetExecutionTimeoutError')).length, 1);
+});

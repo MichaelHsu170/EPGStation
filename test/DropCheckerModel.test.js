@@ -63,3 +63,37 @@ test('stopping twice at once still writes the whole summary', async t => {
     const summary = fs.readFileSync(checker.getFilePath(), 'utf8').split('\n').filter(l => l.startsWith('pid'));
     assert.strictEqual(summary.length, 4);
 });
+
+test('a retried recording on the same checker gets its own summary and result', async t => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'drop-check-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const silent = { system: { info() {}, warn() {}, error() {}, fatal() {}, debug() {} } };
+    const checker = new DropCheckerModel({ getLogger: () => silent });
+
+    // first attempt: a drop, then the recorder gives up (no data within the start timeout)
+    await checker.start(dir, path.join(dir, 'rec.m2ts'), new PassThrough());
+    checker.tsPacketAnalyzer.emit('packetDrop', 0x100, 2, 1);
+    await checker.stop();
+
+    // the retry records 50 packets on PID 0x100
+    const source = new PassThrough();
+    await checker.start(dir, path.join(dir, 'rec.m2ts'), source);
+    for (let i = 0; i < 50; i++) {
+        const packet = Buffer.alloc(188);
+        packet[0] = 0x47;
+        packet[1] = 0x01;
+        packet[2] = 0x00;
+        packet[3] = 0x10 | (i & 0x0f);
+        source.write(packet);
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await checker.stop();
+
+    assert.strictEqual(path.basename(checker.getFilePath()), 'rec.m2ts(1).log');
+    assert.deepStrictEqual(await checker.getResult(), { 256: { packet: 50, error: 0, drop: 0, scrambling: 0 } });
+    // no blank line: the first attempt's drop is not counted as an error of the retry
+    assert.strictEqual(
+        fs.readFileSync(checker.getFilePath(), 'utf8'),
+        'pid: 0x0100, error: 0, drop: 0, scrambling: 0, packet: 50, name: -\n',
+    );
+});

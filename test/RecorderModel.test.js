@@ -92,3 +92,41 @@ test('recording finish is still reported when clearing the recording flag fails'
 
     assert.deepStrictEqual(finished, [5]);
 });
+
+test('a database error when the recording starts reaches the retry and failure handling', async t => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'recorder-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    const stream = new PassThrough();
+    const failed = [];
+    const model = Object.create(RecorderModel.prototype);
+    Object.assign(model, {
+        log: silentLog,
+        config: { isEnabledDropCheck: false },
+        reserve: { id: 1, programId: null },
+        isStopPrepRec: false,
+        stream: null,
+        recFile: null,
+        abortController: null,
+        dropLogFileId: null,
+        streamCreator: { create: async () => stream },
+        reserveDB: { findId: async () => ({ id: 1 }) },
+        recordingUtil: { getRecPath: async () => ({ fullPath: path.join(dir, 'rec.m2ts') }) },
+        createRecorded: async () => ({}),
+        recordedDB: { insertOnce: async () => Promise.reject(new Error('db down')) },
+        recordingEvent: { emitStartPrepRecording: () => {}, emitPrepRecordingFailed: reserve => failed.push(reserve.id) },
+        eventEmitter: { emit: () => {} },
+    });
+
+    // the last retry: a failure is reported instead of retrying
+    const preparing = model.prepRecord(3);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    stream.write(Buffer.alloc(188)); // first data: the recording is added to the database
+    const settled = await Promise.race([preparing.then(() => true), new Promise(resolve => setTimeout(() => resolve(false), 2000))]);
+
+    assert.strictEqual(settled, true);
+    assert.deepStrictEqual(failed, [1]);
+});
