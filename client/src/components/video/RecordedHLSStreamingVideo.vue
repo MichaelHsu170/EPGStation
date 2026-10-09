@@ -115,7 +115,13 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
             // 各タイマーは自分の id を止める. checkEnabledTimerId は最後のタイマーの id に上書きされている
             clearInterval(this.checkEnabledTimerId);
             const timerId = setInterval(async () => {
-                if ((await this.videoState.isEnabled()) === false || this.isDestroyed === true) {
+                // ページを離れた後に作られたタイマーは beforeDestroy で止められないので自分で止める
+                if (this.isDestroyed === true) {
+                    clearInterval(timerId);
+
+                    return;
+                }
+                if ((await this.videoState.isEnabled()) === false || (this.isDestroyed as boolean) === true) {
                     return;
                 }
 
@@ -357,6 +363,10 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
             }
             await Util.sleep(500);
             this.video.playbackRate = playbackRate;
+            // 待っている間に後からシークされている場合は, そのシークの処理中なので解除しない
+            if (this.lastSeekTime !== beforeStartStream || this.dummyPlayPosition !== time) {
+                return;
+            }
             this.dummyPlayPosition = null;
         }, 200);
     }
