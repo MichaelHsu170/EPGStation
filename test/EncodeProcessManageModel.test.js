@@ -42,3 +42,24 @@ test('two processes started in the same millisecond are tracked apart: the one t
         [long.pid],
     );
 });
+
+test('a process killed to make room is removed by its own id: the new process and the other running ones stay tracked', async t => {
+    const model = new EncodeProcessManageModel(
+        { getLogger: () => ({ encode: { info: () => {}, error: () => {} } }) },
+        { getConfig: () => ({ encodeProcessNum: 3 }) },
+    );
+
+    // 3 low-priority "streams": cat exits as soon as kill() ends its stdin, i.e. during kill's 500 ms wait
+    const streams = [];
+    for (let i = 0; i < 3; i++) {
+        streams.push(await model.create({ cmd: '/bin/cat', input: null, output: null, priority: 1 }));
+    }
+    t.after(() => streams.forEach(s => s.kill()));
+    const encode = await model.create({ cmd: '/bin/sleep 30', input: null, output: null, priority: 10 });
+    t.after(() => encode.kill());
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    const running = streams.filter(s => s.exitCode === null && s.signalCode === null).concat(encode);
+    assert.strictEqual(running.length, 3);
+    assert.deepStrictEqual(model.childs.map(c => c.child.pid).sort(), running.map(c => c.pid).sort());
+});

@@ -173,7 +173,12 @@ class EncodeProcessManageModel implements IEncodeProcessManageModel {
                     this.log.encode.error(err);
                 }
 
-                this.childs.splice(i, 1);
+                // kill を待つ間に exit ハンドラによる削除や新規プロセスの追加で this.childs が
+                // 変化しているため、i ではなく processId で探し直して削除する
+                const index = this.childs.findIndex(c => c.processId === processId);
+                if (index !== -1) {
+                    this.childs.splice(index, 1);
+                }
                 break;
             }
         }
