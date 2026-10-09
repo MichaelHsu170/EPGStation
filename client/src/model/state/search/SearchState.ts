@@ -1349,7 +1349,8 @@ export default class SearchState implements ISearchState {
         if (option.directory !== null) {
             saveOption.directory = option.directory;
         }
-        if (option.recordedFormat !== null) {
+        // キーボードで消した場合は空文字になるので, 空のファイル名にならないよう送らない
+        if (typeof option.recordedFormat === 'string' && option.recordedFormat.length > 0) {
             saveOption.recordedFormat = option.recordedFormat;
         }
 

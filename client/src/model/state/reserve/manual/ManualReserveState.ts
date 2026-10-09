@@ -482,7 +482,8 @@ export default class ManualReserveState implements IManualReserveState {
         if (this.saveOption.directory !== null) {
             saveOption.directory = this.saveOption.directory;
         }
-        if (this.saveOption.recordedFormat !== null) {
+        // キーボードで消した場合は空文字になるので, 空のファイル名にならないよう送らない
+        if (typeof this.saveOption.recordedFormat === 'string' && this.saveOption.recordedFormat.length > 0) {
             saveOption.recordedFormat = this.saveOption.recordedFormat;
         }
 
