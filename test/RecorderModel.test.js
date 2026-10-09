@@ -59,7 +59,7 @@ test('a failed recording preparation closes the Mirakurun stream it opened', asy
         dropChecker: { stop: async () => {} },
     });
 
-    await model.prepRecord(3); // the last retry: no further retry is scheduled
+    await model.prepRecord(3, 3); // the last retry: no further retry is scheduled
 
     assert.strictEqual(stream.destroyed, true);
     assert.strictEqual(model.stream, null);
@@ -121,8 +121,8 @@ test('a database error when the recording starts reaches the retry and failure h
         eventEmitter: { emit: () => {} },
     });
 
-    // the last retry: a failure is reported instead of retrying
-    const preparing = model.prepRecord(3);
+    // the last retry (3 failures so far): a failure is reported instead of retrying
+    const preparing = model.prepRecord(3, 3);
     await new Promise(resolve => setTimeout(resolve, 50));
     stream.write(Buffer.alloc(188)); // first data: the recording is added to the database
     const settled = await Promise.race([preparing.then(() => true), new Promise(resolve => setTimeout(() => resolve(false), 2000))]);
@@ -375,8 +375,9 @@ test('a reservation whose program ends while Mirakurun is unreachable is reporte
         await flushIO();
     }
 
-    // attempts at 0, 5, ..., 30 s are on air; the one at 35 s is past the end and is the last
-    assert.strictEqual(attempts, 8);
+    // attempts at 0, 5, ..., 30 s are on air; the one at 35 s is past the end and the first of the
+    // failures that keep the 3 retries (40, 45 and 50 s)
+    assert.strictEqual(attempts, 11);
     assert.deepStrictEqual(failed, [7]);
     assert.strictEqual(model.isPrepRecording, false);
 });
@@ -396,6 +397,58 @@ test('a stream refused for another reason than the connection keeps the 3 retrie
     }
 
     assert.strictEqual(attempts, 4);
+    assert.deepStrictEqual(failed, [7]);
+});
+
+test('another failure right after Mirakurun is reachable again still gets the 3 retries', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    let attempts = 0;
+    const { model, failed } = createPrepModel({ id: 7, programId: null, endAt: 60 * 60 * 1000 }, async () => {
+        attempts++;
+        if (attempts <= 5) {
+            throw connectionError('ECONNREFUSED');
+        }
+        if (attempts === 6) {
+            throw new Error('Bad status respond (503 Service Unavailable).');
+        }
+
+        return new PassThrough();
+    });
+    let recording = 0;
+    model.doRecord = async () => {
+        recording++;
+    };
+
+    await model.prepRecord();
+    for (let i = 0; i < 10; i++) {
+        t.mock.timers.tick(5 * 1000);
+        await flushIO();
+    }
+
+    assert.strictEqual(attempts, 7);
+    assert.strictEqual(recording, 1);
+    assert.deepStrictEqual(failed, []);
+});
+
+test('the 3 retries of other failures are not reset by connection errors in between', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    let attempts = 0;
+    const { model, failed } = createPrepModel({ id: 7, programId: null, endAt: 60 * 60 * 1000 }, async () => {
+        attempts++;
+        if (attempts % 2 === 0) {
+            throw connectionError('ECONNREFUSED');
+        }
+        throw new Error('Bad status respond (503 Service Unavailable).');
+    });
+
+    await model.prepRecord();
+    for (let i = 0; i < 20; i++) {
+        t.mock.timers.tick(5 * 1000);
+        await flushIO();
+    }
+
+    // 503 at attempts 1, 3, 5, 7: the 4th 503 is the last
+    assert.strictEqual(attempts, 7);
     assert.deepStrictEqual(failed, [7]);
 });
 

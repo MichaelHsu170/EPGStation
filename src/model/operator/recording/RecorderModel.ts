@@ -159,8 +159,10 @@ class RecorderModel implements IRecorderModel {
 
     /**
      * 録画準備
+     * @param retry 再試行回数
+     * @param failures 放送中に Mirakurun に接続できなかった失敗を除く失敗回数 (3 回までの再試行はこちらで数える)
      */
-    private async prepRecord(retry: number = 0): Promise<void> {
+    private async prepRecord(retry: number = 0, failures: number = 0): Promise<void> {
         if (this.isStopPrepRec === true) {
             this.isPlanToDelete = false;
             this.emitCancelEvent();
@@ -233,10 +235,10 @@ class RecorderModel implements IRecorderModel {
             }
             // 取得済みの stream を閉じないとチューナーが番組終了まで確保されたままになる
             this.destroyStream();
-            if (retry < 3 || isRetryUntilEnd === true) {
+            if (failures < 3 || isRetryUntilEnd === true) {
                 // retry
                 setTimeout(() => {
-                    this.prepRecord(retry + 1);
+                    this.prepRecord(retry + 1, isRetryUntilEnd === true ? failures : failures + 1);
                 }, 1000 * 5);
             } else {
                 this.isPrepRecording = false;
