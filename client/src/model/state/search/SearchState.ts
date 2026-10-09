@@ -1326,8 +1326,10 @@ export default class SearchState implements ISearchState {
             avoidDuplicate: option.avoidDuplicate,
         };
 
-        if (option.periodToAvoidDuplicate !== null) {
-            reserveOption.periodToAvoidDuplicate = parseInt(option.periodToAvoidDuplicate as any, 10);
+        // キーボードで消した日数は空文字列になるので, 数値になるときだけ送る
+        const periodToAvoidDuplicate = parseInt(option.periodToAvoidDuplicate as any, 10);
+        if (isNaN(periodToAvoidDuplicate) === false) {
+            reserveOption.periodToAvoidDuplicate = periodToAvoidDuplicate;
         }
 
         return reserveOption;
