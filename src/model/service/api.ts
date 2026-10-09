@@ -95,10 +95,11 @@ export const responseFile = (
 
     // ファイルより長い末尾指定 (bytes=-N, N > ファイルサイズ) は RFC 7233 に従いファイル全体を返す
     const start: number = Math.max(rangeRequest.Start, 0);
-    const end: number = rangeRequest.End;
+    // 終了位置がファイル末尾以降 (bytes=0-N, N >= ファイルサイズ) は RFC 7233 §2.1 に従いファイル末尾までを返す
+    const end: number = Math.min(rangeRequest.End, stat.size - 1);
 
-    // start > end (bytes=5-2) は満たせない範囲として扱う
-    if (start >= stat.size || end >= stat.size || start > end) {
+    // 開始位置がファイル末尾以降 (bytes=N-, N >= ファイルサイズ) と start > end (bytes=5-2) は満たせない範囲として扱う
+    if (start >= stat.size || start > end) {
         responseHeaders['Content-Range'] = 'bytes */' + stat.size;
         sendResponse(416, req, res, responseHeaders, null);
 

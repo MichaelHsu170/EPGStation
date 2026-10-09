@@ -60,11 +60,20 @@ test('a suffix range longer than the file returns the whole file (RFC 7233)', as
     assert.deepStrictEqual(await get('bytes=-11'), { status: 206, length: '10', body: '0123456789' });
 });
 
+test('a range ending at or past the end of the file returns the bytes up to the end (RFC 7233)', async t => {
+    const get = serve(t, createFile(t));
+
+    assert.deepStrictEqual(await get('bytes=0-19'), { status: 206, length: '10', body: '0123456789' });
+    assert.deepStrictEqual(await get('bytes=7-10'), { status: 206, length: '3', body: '789' });
+    assert.deepStrictEqual(await get('bytes=9-9'), { status: 206, length: '1', body: '9' });
+});
+
 test('an unsatisfiable range request gets 416', async t => {
     const get = serve(t, createFile(t));
 
     assert.strictEqual((await get('bytes=5-2')).status, 416);
     assert.strictEqual((await get('bytes=10-')).status, 416);
+    assert.strictEqual((await get('bytes=10-19')).status, 416);
 });
 
 test('a read error while sending a file closes the response instead of crashing the process', { timeout: 10000 }, async t => {
