@@ -13,6 +13,7 @@ export default class ReservesState implements IReservesState {
     private reserves: ReserveStateData[] | null = null;
     private total: number = 0;
     private fetchDataSeq: number = 0; // 古い取得結果で新しい取得結果を上書きしないための番号
+    private appliedSeq: number = 0; // 最後に反映した取得 (またはクリア) の番号
 
     constructor(@inject('IReservesApiModel') reserveApiModel: IReservesApiModel, @inject('IReserveStateUtil') reserveStateUtil: IReserveStateUtil) {
         this.reserveApiModel = reserveApiModel;
@@ -23,7 +24,7 @@ export default class ReservesState implements IReservesState {
      * 取得した予約情報をクリア
      */
     public clearDate(): void {
-        this.fetchDataSeq++;
+        this.appliedSeq = ++this.fetchDataSeq;
         this.reserves = null;
         this.total = 0;
     }
@@ -35,10 +36,12 @@ export default class ReservesState implements IReservesState {
     public async fetchData(option: apid.GetReserveOption): Promise<void> {
         const seq = ++this.fetchDataSeq;
         const reserves = await this.reserveApiModel.gets(option);
-        // 後から開始した取得 (またはクリア) があれば古い結果は捨てる
-        if (seq !== this.fetchDataSeq) {
+        // 反映済みの結果 (またはクリア) より古い結果は捨てる.
+        // 後から開始した取得がまだ応答待ちでも, 取得が続いて表示が止まらないように反映する
+        if (seq < this.appliedSeq) {
             return;
         }
+        this.appliedSeq = seq;
         this.total = reserves.total;
 
         const oldSelectedIndex: SelectedIndex = {};

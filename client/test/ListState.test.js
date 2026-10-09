@@ -92,6 +92,27 @@ for (const [name, create, fetch, response, shownIds] of states) {
         assert.deepStrictEqual(shownIds(state), []);
     });
 
+    test(`${name}: a response is shown while a later request is still pending`, async () => {
+        // e.g. the encode progress, refreshed again before each response arrives
+        const api = createApi();
+        const state = create(api);
+
+        const first = fetch(state);
+        const second = fetch(state);
+        api.resolve(0, response([1]));
+        await first;
+        assert.deepStrictEqual(shownIds(state), [1]);
+
+        const third = fetch(state);
+        api.resolve(1, response([2]));
+        await second;
+        assert.deepStrictEqual(shownIds(state), [2]);
+
+        api.resolve(2, response([3]));
+        await third;
+        assert.deepStrictEqual(shownIds(state), [3]);
+    });
+
     test(`${name}: responses in request order are all shown`, async () => {
         const api = createApi();
         const state = create(api);
