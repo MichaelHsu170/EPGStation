@@ -82,11 +82,10 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
         await this.updateChannels();
 
         // タイムアウト設定
+        // NOTE: 実行中の要求は中断できないためログ出力のみ (timer 内で throw しても updateAll は止まらず uncaughtException になるだけ)
         const timeout = setTimeout(
             () => {
                 this.log.system.error('update all timeout');
-                clearTimeout(timeout);
-                throw new Error('EPGUpdateAllTimeoutError');
             },
             10 * 60 * 1000,
         );
@@ -262,7 +261,6 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
         const eventStream = await this.mirakurunClient.getEventsStream().catch(err => {
             this.log.system.error('event stream get error');
             this.log.system.error(err);
-            this.stopStream(eventStream);
             throw err;
         });
 
@@ -281,12 +279,14 @@ class EPGUpdateManageModel extends EventEmitter implements IEPGUpdateManageModel
             eventStream.once('end', () => {
                 this.log.system.error('event stream is ended');
                 this.stopStream(eventStream);
+                this.emit(EPGUpdateEvent.STREAM_ABORTED);
                 reject(new Error('EndedEventStream'));
             });
 
             eventStream.once('close', () => {
                 this.log.system.error('event stream is closed');
                 this.stopStream(eventStream);
+                this.emit(EPGUpdateEvent.STREAM_ABORTED);
                 reject(new Error('ClosedEventStream'));
             });
 

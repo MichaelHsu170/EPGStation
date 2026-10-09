@@ -120,3 +120,73 @@ test('the mirakc path waits for the full save before the cycle ends', async () =
     await cycle;
     assert.match(String(saveFailed), /db down/);
 });
+
+/**
+ * EPGUpdater built by its constructor (so the event stream handlers are wired) around an update manager whose
+ * updateAll calls wait until released. Counts the full updates and how many ran at once.
+ */
+const setUpStreamUpdater = () => {
+    const { EventEmitter } = require('events');
+    const manage = new EventEmitter();
+    const state = { calls: 0, running: 0, maxRunning: 0, releases: [] };
+    Object.assign(manage, {
+        checkTunerServerType: async () => 0,
+        start: () => new Promise(() => {}), // the event stream stays connected
+        updateAll: async () => {
+            state.calls++;
+            state.running++;
+            state.maxRunning = Math.max(state.maxRunning, state.running);
+            await new Promise(resolve => state.releases.push(resolve));
+            state.running--;
+        },
+        saveProgram: async () => {},
+        saveService: async () => {},
+        deleteOldPrograms: async () => {},
+    });
+    const log = { system: { info: () => {}, error: () => {} } };
+    const updater = new EPGUpdater({ getLogger: () => log }, { getConfig: () => ({ epgUpdateIntervalTime: 10 }) }, manage);
+
+    return { manage, updater, state };
+};
+
+const advance = async (t, ms) => {
+    for (let i = 0; i < ms / 1000; i++) {
+        t.mock.timers.tick(1000);
+        await new Promise(setImmediate);
+    }
+};
+
+test('the full update when the event stream starts is not run again by the update cycle meanwhile', async t => {
+    t.mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'], now: 1790000000000 });
+    const { manage, updater, state } = setUpStreamUpdater();
+
+    await updater.start();
+    manage.emit('event stream started');
+    await advance(t, 30 * 1000);
+    assert.strictEqual(state.calls, 1);
+
+    state.releases.shift()();
+    await advance(t, 30 * 1000);
+    assert.strictEqual(state.calls, 1);
+    assert.strictEqual(updater.isEventStreamAlive, true);
+});
+
+test('when the event stream starts during a full update of the update cycle, its own full update waits for it', async t => {
+    t.mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'], now: 1790000000000 });
+    const { manage, updater, state } = setUpStreamUpdater();
+
+    await updater.start();
+    await advance(t, 10 * 1000); // the cycle at 10 s starts a full update (no event stream yet)
+    assert.strictEqual(state.calls, 1);
+    manage.emit('event stream started');
+    await advance(t, 30 * 1000);
+    assert.strictEqual(state.calls, 1);
+
+    state.releases.shift()();
+    await advance(t, 2 * 1000);
+    assert.strictEqual(state.calls, 2);
+    assert.strictEqual(state.maxRunning, 1);
+    state.releases.shift()();
+    await advance(t, 1000);
+    assert.strictEqual(updater.isEventStreamAlive, true);
+});

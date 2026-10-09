@@ -47,6 +47,18 @@ class EPGUpdater implements IEPGUpdater {
         this.updateManage.on(EPGUpdateEvent.STREAM_STARTED, async () => {
             this.log.system.info('event stream started');
             this.retryCount = 0;
+
+            // 周期処理 (updateAll を含む) と同時に実行しないよう、実行中の周期処理が終わるのを待ってから
+            // 周期処理として実行する (2 つの updateAll が同時に全番組を削除・再登録しないように)
+            while (
+                this.updateStartedAt !== null &&
+                new Date().getTime() - this.updateStartedAt < EPGUpdater.UPDATE_TIMEOUT
+            ) {
+                await Util.sleep(1000);
+            }
+            const startedAt = new Date().getTime();
+            this.updateStartedAt = startedAt;
+
             try {
                 await this.updateManage.updateAll();
                 this.notify();
@@ -60,6 +72,10 @@ class EPGUpdater implements IEPGUpdater {
             // updateAll 後は全件数削除が行われるため削除時間も更新する
             this.lastDeletedTime = now;
             this.isEventStreamAlive = true;
+
+            if (this.updateStartedAt === startedAt) {
+                this.updateStartedAt = null;
+            }
         });
 
         this.updateManage.on(EPGUpdateEvent.STREAM_ABORTED, () => {
