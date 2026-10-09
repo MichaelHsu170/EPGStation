@@ -39,7 +39,7 @@ export default interface IGuideState {
     createProgramDoms(isSingleStation: boolean): void;
     updateVisible(): void;
     updateGenre(): void;
-    updateReserves(): void;
+    updateReserves(): Promise<void>;
     getChannels(): apid.ScheduleChannleItem[];
     getChannelsLength(): number;
     getStartAt(): apid.UnixtimeMS;

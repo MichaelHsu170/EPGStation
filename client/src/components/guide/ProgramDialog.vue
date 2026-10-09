@@ -78,6 +78,7 @@ export default class ProgramDialog extends Vue {
     public isRemove: boolean = false;
 
     private snackbarState = container.get<ISnackbarState>('ISnackbarState');
+    private isAddingReserve: boolean = false; // 予約の二重送信防止
 
     /**
      * 手動予約
@@ -191,6 +192,11 @@ export default class ProgramDialog extends Vue {
      * 簡易手動予約
      */
     public async addReserve(): Promise<void> {
+        if (this.isAddingReserve === true) {
+            return;
+        }
+        this.isAddingReserve = true;
+
         try {
             await this.dialogState.addReserve();
             if (this.dialogState.displayData !== null) {
@@ -206,6 +212,7 @@ export default class ProgramDialog extends Vue {
                 });
             }
         }
+        this.isAddingReserve = false;
         this.dialogState.isOpen = false;
     }
 
@@ -224,7 +231,7 @@ export default class ProgramDialog extends Vue {
             if (this.dialogState.displayData !== null) {
                 this.snackbarState.open({
                     color: 'error',
-                    text: `${this.dialogState.displayData.programName} キャンセル失敗`,
+                    text: `${this.dialogState.displayData.programName} キャンセル失敗${Util.getApiErrorReason(err)}`,
                 });
             }
         }
@@ -246,7 +253,7 @@ export default class ProgramDialog extends Vue {
             if (this.dialogState.displayData !== null) {
                 this.snackbarState.open({
                     color: 'error',
-                    text: `${this.dialogState.displayData.programName} 除外解除失敗`,
+                    text: `${this.dialogState.displayData.programName} 除外解除失敗${Util.getApiErrorReason(err)}`,
                 });
             }
         }
@@ -268,7 +275,7 @@ export default class ProgramDialog extends Vue {
             if (this.dialogState.displayData !== null) {
                 this.snackbarState.open({
                     color: 'error',
-                    text: `${this.dialogState.displayData.programName} 重複解除失敗`,
+                    text: `${this.dialogState.displayData.programName} 重複解除失敗${Util.getApiErrorReason(err)}`,
                 });
             }
         }
@@ -303,11 +310,7 @@ export default class ProgramDialog extends Vue {
             this.$nextTick(() => {
                 const extended = document.getElementById('program-extended');
                 if (extended !== null) {
-                    let str = extended.innerHTML;
-                    // URL に ' " < > を含めない (href='...' の属性から抜け出して任意の属性を追加できてしまうため)
-                    str = str.replace(/(http:\/\/[\x21\x23-\x26\x28-\x3b\x3d\x3f-\x7e]+)/gi, "<a href='$1' target='_blank'>$1</a>");
-                    str = str.replace(/(https:\/\/[\x21\x23-\x26\x28-\x3b\x3d\x3f-\x7e]+)/gi, "<a href='$1' target='_blank'>$1</a>");
-                    extended.innerHTML = str;
+                    extended.innerHTML = Util.linkifyUrls(extended.innerHTML);
                 }
             });
         }

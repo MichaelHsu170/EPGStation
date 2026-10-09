@@ -66,6 +66,7 @@ export default class ManualReserve extends Vue {
 
     private programId: apid.ProgramId | null = null;
     private reserveId: apid.ReserveId | null = null;
+    private isSubmitting: boolean = false; // 追加, 更新の二重送信防止
 
     public created(): void {
         // socket.io イベント
@@ -88,6 +89,12 @@ export default class ManualReserve extends Vue {
      * 追加
      */
     public async add(): Promise<void> {
+        if (this.isSubmitting === true) {
+            return;
+        }
+        this.isSubmitting = true;
+
+        const fullPath = this.$route.fullPath;
         try {
             await this.manualReserveState.addReserve();
             this.snackbarState.open({
@@ -95,6 +102,7 @@ export default class ManualReserve extends Vue {
                 text: '予約を追加しました。',
             });
         } catch (err) {
+            this.isSubmitting = false;
             this.snackbarState.open({
                 color: 'error',
                 text: `予約の追加に失敗しました。${Util.getApiErrorReason(err)}`,
@@ -104,7 +112,10 @@ export default class ManualReserve extends Vue {
         }
 
         await Util.sleep(800);
-        this.$router.back();
+        // 待っている間に別のページへ移動していなければ戻る
+        if (this.$route.fullPath === fullPath) {
+            this.$router.back();
+        }
     }
 
     /**
@@ -115,6 +126,12 @@ export default class ManualReserve extends Vue {
             return;
         }
 
+        if (this.isSubmitting === true) {
+            return;
+        }
+        this.isSubmitting = true;
+
+        const fullPath = this.$route.fullPath;
         try {
             await this.manualReserveState.updateReserve(this.reserveId);
             this.snackbarState.open({
@@ -122,6 +139,7 @@ export default class ManualReserve extends Vue {
                 text: '予約を更新しました。',
             });
         } catch (err) {
+            this.isSubmitting = false;
             this.snackbarState.open({
                 color: 'error',
                 text: `予約の更新に失敗しました。${Util.getApiErrorReason(err)}`,
@@ -131,7 +149,10 @@ export default class ManualReserve extends Vue {
         }
 
         await Util.sleep(800);
-        this.$router.back();
+        // 待っている間に別のページへ移動していなければ戻る
+        if (this.$route.fullPath === fullPath) {
+            this.$router.back();
+        }
     }
 
     /**
@@ -177,6 +198,7 @@ export default class ManualReserve extends Vue {
     public onUrlChange(): void {
         this.programId = null;
         this.reserveId = null;
+        this.isSubmitting = false;
         this.manualReserveState.init();
 
         const finnalize = async (): Promise<void> => {
@@ -199,6 +221,8 @@ export default class ManualReserve extends Vue {
                         text: '予約情報取得に失敗',
                     });
                     console.error(err);
+                    // 読み込めなかった予約を既定値で上書きできないように更新させない
+                    this.reserveId = null;
                     await finnalize();
 
                     return;

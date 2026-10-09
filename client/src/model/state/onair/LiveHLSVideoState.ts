@@ -37,7 +37,9 @@ class LiveHLSVideoState implements ILiveHLSVideoState {
                 return;
             }
 
-            await this.streamApiModel.keep(this.streamId);
+            await this.streamApiModel.keep(this.streamId).catch(err => {
+                console.error(err);
+            });
         }, LiveHLSVideoState.KEEP_INTERVAL * 1000);
     }
 

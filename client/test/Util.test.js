@@ -17,3 +17,17 @@ test('getApiErrorReason is empty when there is no reason', () => {
     assert.strictEqual(Util.getApiErrorReason(undefined), '');
     assert.strictEqual(Util.getApiErrorReason({}), '');
 });
+
+test('linkifyUrls links an http URL that contains https:// once, with nothing added to the anchor', () => {
+    const payload = 'http://a/?https://onmouseover=alert(1)//';
+
+    assert.strictEqual(Util.linkifyUrls(payload), "<a href='http://a/?https://onmouseover=alert(1)//' target='_blank'>http://a/?https://onmouseover=alert(1)//</a>");
+});
+
+test('linkifyUrls links http and https URLs and ends a URL at a quote or space', () => {
+    assert.strictEqual(
+        Util.linkifyUrls("see https://x.jp/a'b and http://y.jp/?q=1&amp;r=2<br>"),
+        "see <a href='https://x.jp/a' target='_blank'>https://x.jp/a</a>'b and <a href='http://y.jp/?q=1&amp;r=2' target='_blank'>http://y.jp/?q=1&amp;r=2</a><br>",
+    );
+    assert.strictEqual(Util.linkifyUrls('no link here'), 'no link here');
+});

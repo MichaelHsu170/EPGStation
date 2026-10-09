@@ -230,7 +230,7 @@ export default (container: Container): void => {
 
     container.bind<IRecordedStreamingVideoState>('IRecordedStreamingVideoState').to(RecordedStreamingVideoState).inSingletonScope();
 
-    container.bind<IRecordedHLSStreamingVideoState>('IRecordedHLSStreamingVideoState').to(RecordedHLSStreamingVideoState).inSingletonScope();
+    container.bind<IRecordedHLSStreamingVideoState>('IRecordedHLSStreamingVideoState').to(RecordedHLSStreamingVideoState);
 
     container.bind<ISendVideoFileToKodiState>('ISendVideoFileToKodiState').to(SendVideoFileToKodiState).inSingletonScope();
 

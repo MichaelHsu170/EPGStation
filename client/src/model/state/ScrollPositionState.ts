@@ -39,13 +39,17 @@ class ScrollPositionState implements IScrollPositionState {
      * sessionStorage に history を保存
      */
     private saveStorage(): void {
-        window.sessionStorage.setItem(
-            ScrollPositionState.STORAGE_KEY,
-            JSON.stringify({
-                history: this.history,
-                curentPosition: this.currentPosition,
-            }),
-        );
+        try {
+            window.sessionStorage.setItem(
+                ScrollPositionState.STORAGE_KEY,
+                JSON.stringify({
+                    history: this.history,
+                    curentPosition: this.currentPosition,
+                }),
+            );
+        } catch (err) {
+            console.error('session storage save error');
+        }
     }
 
     /**
@@ -105,17 +109,25 @@ class ScrollPositionState implements IScrollPositionState {
      * history を復元
      */
     private restoreHistory(): void {
-        const str = window.sessionStorage.getItem(ScrollPositionState.STORAGE_KEY);
-        if (str === null) {
+        let data: any = null;
+        try {
+            const str = window.sessionStorage.getItem(ScrollPositionState.STORAGE_KEY);
+            data = str === null ? null : JSON.parse(str);
+        } catch (err) {
+            console.error('session storage restore error');
+        }
+
+        // 保存されていない, または壊れている場合は空から始める
+        if (data === null || typeof data !== 'object' || Array.isArray(data.history) === false || typeof data.curentPosition !== 'number') {
             this.history = [];
             this.currentPosition = -1;
 
             return;
         }
 
-        const data = JSON.parse(str) as any;
+        // saveStorage() は curentPosition という名前で保存している
         this.history = data.history;
-        this.currentPosition = data.position;
+        this.currentPosition = data.curentPosition;
     }
 
     /**

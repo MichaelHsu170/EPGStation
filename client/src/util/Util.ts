@@ -137,6 +137,17 @@ namespace Util {
         return `${size.toFixed(1)}${fileSizeUnits[cnt]}`;
     };
 
+    /**
+     * innerHTML 中の http(s) の URL をリンクにする
+     * URL に ' " < > を含めない (href='...' の属性から抜け出して任意の属性を追加できてしまうため)
+     * http と https を 1 回で置換する (2 回に分けると http の URL 中の https が href の中で再度置換されてしまうため)
+     * @param html: innerHTML
+     * @return string
+     */
+    export const linkifyUrls = (html: string): string => {
+        return html.replace(/(https?:\/\/[\x21\x23-\x26\x28-\x3b\x3d\x3f-\x7e]+)/gi, "<a href='$1' target='_blank'>$1</a>");
+    };
+
     export const getOSDarkTheme = (): boolean => {
         return window.matchMedia('(prefers-color-scheme: dark)').matches;
     };

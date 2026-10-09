@@ -61,6 +61,8 @@ export default class Pagination extends Vue {
         Util.move(this.$router, {
             path: this.$route.path,
             query: query,
+        }).catch(err => {
+            console.error(err);
         });
     }
 }

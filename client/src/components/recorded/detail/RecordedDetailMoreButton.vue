@@ -118,6 +118,8 @@ export default class RecordedDetailMoreButton extends Vue {
             query: {
                 rule: this.recordedItem.ruleId.toString(10),
             },
+        }).catch(err => {
+            console.error(err);
         });
     }
 
@@ -160,7 +162,11 @@ export default class RecordedDetailMoreButton extends Vue {
                 query: {
                     ruleId: this.recordedItem.ruleId.toString(10),
                 },
+            }).catch(err => {
+                console.error(err);
             });
+
+            return;
         }
 
         // recorded 絞り込み
@@ -169,6 +175,8 @@ export default class RecordedDetailMoreButton extends Vue {
             query: {
                 keyword: StrUtil.createSearchKeyword(this.recordedItem.name),
             },
+        }).catch(err => {
+            console.error(err);
         });
     }
 

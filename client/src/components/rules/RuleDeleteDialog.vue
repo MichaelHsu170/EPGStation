@@ -76,7 +76,7 @@ export default class RuleDeleteDialog extends Vue {
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',
-                text: `${this.ruleItem.display.keyword} を削除に失敗`,
+                text: `${this.ruleItem.display.keyword} を削除に失敗${Util.getApiErrorReason(err)}`,
             });
             console.error(err);
         }

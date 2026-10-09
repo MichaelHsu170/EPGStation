@@ -114,6 +114,8 @@ export default class RecordedItemMenu extends Vue {
             query: {
                 rule: this.recordedItem.ruleId.toString(10),
             },
+        }).catch(err => {
+            console.error(err);
         });
     }
 
@@ -126,6 +128,8 @@ export default class RecordedItemMenu extends Vue {
                 query: {
                     ruleId: this.recordedItem.ruleId.toString(10),
                 },
+            }).catch(err => {
+                console.error(err);
             });
 
             return;
@@ -137,6 +141,8 @@ export default class RecordedItemMenu extends Vue {
             query: {
                 keyword: StrUtil.createSearchKeyword(this.recordedItem.name),
             },
+        }).catch(err => {
+            console.error(err);
         });
     }
 

@@ -109,11 +109,37 @@ class Dashboard extends Vue {
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private versionState: IVersionState = container.get<IVersionState>('IVersionState');
     private onUpdateStatusCallback = (async (): Promise<void> => {
-        await this.dashboardState.fetchData();
-        await this.recordingState.fetchData(this.createFetchRecordingDataOption());
-        await this.recordedState.fetchData(this.createFetchRecordedDataOption());
-        await this.reservesState.fetchData(this.createFetchReserveDataOption());
+        // 1 つの取得に失敗しても残りは取得する
+        // 画面を離れた後は他のページと共有している state を上書きしないように取得しない
+        await this.dashboardState.fetchData().catch(err => {
+            console.error(err);
+        });
+        if (this.isDestroyed === true) {
+            return;
+        }
+        try {
+            await this.recordingState.fetchData(this.createFetchRecordingDataOption());
+        } catch (err) {
+            console.error(err);
+        }
+        if ((this.isDestroyed as boolean) === true) {
+            return;
+        }
+        try {
+            await this.recordedState.fetchData(this.createFetchRecordedDataOption());
+        } catch (err) {
+            console.error(err);
+        }
+        if ((this.isDestroyed as boolean) === true) {
+            return;
+        }
+        try {
+            await this.reservesState.fetchData(this.createFetchReserveDataOption());
+        } catch (err) {
+            console.error(err);
+        }
     }).bind(this);
+    private isDestroyed: boolean = false; // 画面を離れた後に共有している state を上書きしないためのフラグ
     private recordingScroll: number = 0;
     private recordedScroll: number = 0;
     private reserveScroll: number = 0;
@@ -203,6 +229,8 @@ class Dashboard extends Vue {
     }
 
     public beforeDestroy(): void {
+        this.isDestroyed = true;
+
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
 
@@ -245,7 +273,9 @@ class Dashboard extends Vue {
      * 録画詳細へ飛ぶ
      */
     public gotoRecordedDetail(recordedId: apid.RecordedId): void {
-        Util.move(this.$router, { path: `/recorded/detail/${recordedId.toString(10)}` });
+        Util.move(this.$router, { path: `/recorded/detail/${recordedId.toString(10)}` }).catch(err => {
+            console.error(err);
+        });
     }
 
     /**
@@ -257,6 +287,8 @@ class Dashboard extends Vue {
             query: {
                 page: '2',
             },
+        }).catch(err => {
+            console.error(err);
         });
     }
 
@@ -270,6 +302,8 @@ class Dashboard extends Vue {
             query: {
                 type: 'conflict',
             },
+        }).catch(err => {
+            console.error(err);
         });
     }
 
@@ -340,27 +374,45 @@ class Dashboard extends Vue {
                     });
                     console.error(err);
                 });
-                await this.recordingState.fetchData(this.createFetchRecordingDataOption()).catch(err => {
+                if (this.isDestroyed === true) {
+                    return;
+                }
+                try {
+                    await this.recordingState.fetchData(this.createFetchRecordingDataOption());
+                } catch (err) {
                     this.snackbarState.open({
                         color: 'error',
                         text: '録画中データ取得に失敗',
                     });
                     console.error(err);
-                });
-                await this.recordedState.fetchData(this.createFetchRecordedDataOption()).catch(err => {
+                }
+                if ((this.isDestroyed as boolean) === true) {
+                    return;
+                }
+                try {
+                    await this.recordedState.fetchData(this.createFetchRecordedDataOption());
+                } catch (err) {
                     this.snackbarState.open({
                         color: 'error',
                         text: '録画済みデータ取得に失敗',
                     });
                     console.error(err);
-                });
-                await this.reservesState.fetchData(this.createFetchReserveDataOption()).catch(err => {
+                }
+                if ((this.isDestroyed as boolean) === true) {
+                    return;
+                }
+                try {
+                    await this.reservesState.fetchData(this.createFetchReserveDataOption());
+                } catch (err) {
                     this.snackbarState.open({
                         color: 'error',
                         text: '予約データ取得に失敗',
                     });
                     console.error(err);
-                });
+                }
+                if ((this.isDestroyed as boolean) === true) {
+                    return;
+                }
 
                 this.isShow = true;
 

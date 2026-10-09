@@ -80,7 +80,11 @@ export default class Reserves extends Vue {
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private onUpdateStatusCallback = (async (): Promise<void> => {
-        await this.ruleState.fetchData(this.createFetchDataOption());
+        try {
+            await this.ruleState.fetchData(this.createFetchDataOption());
+        } catch (err) {
+            console.error(err);
+        }
     }).bind(this);
 
     get selectedTitle(): string {
@@ -119,6 +123,8 @@ export default class Reserves extends Vue {
     public addRule(): void {
         Util.move(this.$router, {
             path: '/search',
+        }).catch(err => {
+            console.error(err);
         });
     }
 
@@ -163,13 +169,15 @@ export default class Reserves extends Vue {
     public onUrlChange(): void {
         this.ruleState.clearData();
         this.$nextTick(async () => {
-            await this.ruleState.fetchData(this.createFetchDataOption()).catch(err => {
+            try {
+                await this.ruleState.fetchData(this.createFetchDataOption());
+            } catch (err) {
                 this.snackbarState.open({
                     color: 'error',
                     text: 'ルールデータ取得に失敗',
                 });
                 console.error(err);
-            });
+            }
 
             this.isVisibilityHidden = false;
 

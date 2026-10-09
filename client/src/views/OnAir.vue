@@ -61,6 +61,7 @@ export default class OnAir extends Vue {
     }).bind(this);
     private updateTimer: number | null = null;
     private updateDigestibilityTimer: number | null = null;
+    private isDestroyed: boolean = false; // 画面を離れた後にタイマーを設定しないためのフラグ
 
     get isTabView(): boolean {
         return this.settingValue.isOnAirTabListView;
@@ -72,6 +73,8 @@ export default class OnAir extends Vue {
     }
 
     public beforeDestroy(): void {
+        this.isDestroyed = true;
+
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
 
@@ -87,7 +90,7 @@ export default class OnAir extends Vue {
     public onUrlChange(): void {
         this.onAirState.clearData();
         this.$nextTick(async () => {
-            await this.fetchData().catch(() => {});
+            await this.fetchData();
 
             // データ取得完了を通知
             await this.scrollState.emitDoneGetData();
@@ -108,25 +111,34 @@ export default class OnAir extends Vue {
             clearTimeout(this.updateTimer);
         }
 
-        await this.onAirState
-            .fetchData({
+        let updateTime: number;
+        try {
+            await this.onAirState.fetchData({
                 isHalfWidth: this.settingValue.isHalfWidthDisplayed,
-            })
-            .catch(err => {
-                this.snackbarState.open({
-                    color: 'error',
-                    text: '番組情報取得に失敗',
-                });
-
-                throw err;
             });
+            // 時計のずれで放送終了済みの番組が返ってきても連続で取得しないように最低 1 秒は待つ
+            updateTime = Math.max(this.onAirState.getUpdateTime(), 1000);
+        } catch (err) {
+            this.snackbarState.open({
+                color: 'error',
+                text: '番組情報取得に失敗',
+            });
+            console.error(err);
+            // 取得に失敗しても更新を止めずに 10 秒後に再取得する
+            updateTime = 10 * 1000;
+        }
+
+        // 取得中に画面を離れた場合はタイマーを設定しない
+        if (this.isDestroyed === true) {
+            return;
+        }
 
         if (this.updateTimer !== null) {
             clearTimeout(this.updateTimer);
         }
         this.updateTimer = setTimeout(() => {
             this.fetchData();
-        }, this.onAirState.getUpdateTime());
+        }, updateTime);
 
         if (this.updateDigestibilityTimer !== null) {
             clearInterval(this.updateDigestibilityTimer);

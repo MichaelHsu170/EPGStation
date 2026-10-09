@@ -114,8 +114,9 @@ export default class ManualReserveState implements IManualReserveState {
 
         this.timeSpecifiedOption.name = this.programInfo.programItem.name;
         this.timeSpecifiedOption.channelId = this.programInfo.programItem.channelId;
-        this.timeSpecifiedOption.startAt = new Date(this.programInfo.programItem.startAt);
-        this.timeSpecifiedOption.endAt = new Date(this.programInfo.programItem.endAt);
+        // 時刻入力は日本時間で表示, 入力させる
+        this.timeSpecifiedOption.startAt = DateUtil.getJaDate(new Date(this.programInfo.programItem.startAt));
+        this.timeSpecifiedOption.endAt = DateUtil.getJaDate(new Date(this.programInfo.programItem.endAt));
     }
 
     /**
@@ -129,8 +130,8 @@ export default class ManualReserveState implements IManualReserveState {
             this.timeSpecifiedOption = {
                 name: reserveItem.name,
                 channelId: reserveItem.channelId,
-                startAt: new Date(reserveItem.startAt),
-                endAt: new Date(reserveItem.endAt),
+                startAt: DateUtil.getJaDate(new Date(reserveItem.startAt)),
+                endAt: DateUtil.getJaDate(new Date(reserveItem.endAt)),
             };
         }
 
@@ -415,8 +416,8 @@ export default class ManualReserveState implements IManualReserveState {
             result.timeSpecifiedOption = {
                 name: this.timeSpecifiedOption.name,
                 channelId: this.timeSpecifiedOption.channelId,
-                startAt: this.timeSpecifiedOption.startAt.getTime(),
-                endAt: this.timeSpecifiedOption.endAt.getTime(),
+                startAt: DateUtil.getTimeFromJaDate(this.timeSpecifiedOption.startAt),
+                endAt: DateUtil.getTimeFromJaDate(this.timeSpecifiedOption.endAt),
             };
         } else {
             if (this.programInfo === null) {

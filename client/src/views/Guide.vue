@@ -82,6 +82,7 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 })
 export default class Guide extends Vue {
     public isLoading: boolean = true;
+    private urlChangeSeq: number = 0; // 後から onUrlChange が呼ばれたら前の描画処理を止めるための番号
     public guideState: IGuideState = container.get<IGuideState>('IGuideState');
     public isOpenDaySelectDialog: boolean = false;
 
@@ -92,7 +93,9 @@ export default class Guide extends Vue {
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private onUpdateStatusCallback = ((): void => {
-        this.guideState.updateReserves();
+        this.guideState.updateReserves().catch(err => {
+            console.error(err);
+        });
     }).bind(this);
 
     private programBaseWidth: number = 140;
@@ -244,6 +247,7 @@ export default class Guide extends Vue {
 
     @Watch('$route', { immediate: true, deep: true })
     public onUrlChange(): void {
+        const seq = ++this.urlChangeSeq;
         this.isLoading = true;
         this.guideState.clearDate();
         this.$nextTick(async () => {
@@ -265,11 +269,14 @@ export default class Guide extends Vue {
 
                 return;
             }
+            if (seq !== this.urlChangeSeq) {
+                return;
+            }
 
             // データ取得完了を通知
             await this.scrollState.emitDoneGetData();
 
-            if (typeof this.$refs.programs !== 'undefined') {
+            if (typeof this.$refs.programs !== 'undefined' && seq === this.urlChangeSeq) {
                 this.setDisplayRange();
                 this.guideState.createProgramDoms(typeof this.$route.query.channelId !== 'undefined');
 
@@ -310,6 +317,9 @@ export default class Guide extends Vue {
                     const programDoms = this.guideState.getProgramDoms();
                     const domsLength = programDoms.length;
                     for (let i = 0; i < domsLength; i++) {
+                        if (seq !== this.urlChangeSeq) {
+                            return;
+                        }
                         (this.$refs.content as HTMLElement).appendChild(programDoms[i].element);
                         if (i % 500 === 0) {
                             await Util.sleep(1);

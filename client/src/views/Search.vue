@@ -62,6 +62,7 @@ Component.registerHooks(['beforeRouteUpdate', 'beforeRouteLeave']);
 export default class Search extends Vue {
     public isShow: boolean = false;
     public isVisible: boolean = false;
+    private isSubmitting: boolean = false; // 追加, 更新の二重送信防止
 
     private searchState: ISearchState = container.get<ISearchState>('ISearchState');
     private scrollState: IScrollPositionState = container.get<IScrollPositionState>('IScrollPositionState');
@@ -158,6 +159,12 @@ export default class Search extends Vue {
     }
 
     public async add(): Promise<void> {
+        if (this.isSubmitting === true) {
+            return;
+        }
+        this.isSubmitting = true;
+
+        const fullPath = this.$route.fullPath;
         try {
             await this.searchState.addRule();
             this.snackbarState.open({
@@ -166,17 +173,27 @@ export default class Search extends Vue {
             });
 
             await Util.sleep(1000);
-            this.$router.back();
+            // 待っている間に別のページへ移動していなければ戻る
+            if (this.$route.fullPath === fullPath) {
+                this.$router.back();
+            }
         } catch (err) {
+            this.isSubmitting = false;
             console.error(err);
             this.snackbarState.open({
                 color: 'error',
-                text: 'ルール追加に失敗',
+                text: `ルール追加に失敗${Util.getApiErrorReason(err)}`,
             });
         }
     }
 
     public async update(): Promise<void> {
+        if (this.isSubmitting === true) {
+            return;
+        }
+        this.isSubmitting = true;
+
+        const fullPath = this.$route.fullPath;
         try {
             await this.searchState.updateRule();
             this.snackbarState.open({
@@ -185,12 +202,16 @@ export default class Search extends Vue {
             });
 
             await Util.sleep(1000);
-            this.$router.back();
+            // 待っている間に別のページへ移動していなければ戻る
+            if (this.$route.fullPath === fullPath) {
+                this.$router.back();
+            }
         } catch (err) {
+            this.isSubmitting = false;
             console.error(err);
             this.snackbarState.open({
                 color: 'error',
-                text: 'ルール更新に失敗',
+                text: `ルール更新に失敗${Util.getApiErrorReason(err)}`,
             });
         }
     }
@@ -275,6 +296,7 @@ export default class Search extends Vue {
     @Watch('$route', { immediate: true, deep: true })
     public onUrlChange(): void {
         this.searchState.clear();
+        this.isSubmitting = false;
         this.isVisible = false;
         this.isShow = false;
 
@@ -320,6 +342,16 @@ export default class Search extends Vue {
                     text: '初期化失敗',
                 });
                 console.error(err);
+
+                // 読み込めなかったルールを既定値で上書きできないように編集画面を出さない
+                if (ruleId !== null) {
+                    this.isShow = false;
+                    this.$nextTick(async () => {
+                        await this.scrollState.emitDoneGetData();
+                    });
+
+                    return;
+                }
             }
 
             // ページ情報の復元が必要か?

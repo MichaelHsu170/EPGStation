@@ -40,6 +40,7 @@ export default class WatchOnAirInfoCard extends Vue {
         await this.update();
     }).bind(this);
     private updateTimer: number | null = null;
+    private isDestroyed: boolean = false; // 画面を離れた後にタイマーを設定しないためのフラグ
 
     public created(): void {
         // socket.io イベント
@@ -47,6 +48,8 @@ export default class WatchOnAirInfoCard extends Vue {
     }
 
     public beforeDestroy(): void {
+        this.isDestroyed = true;
+
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
 
@@ -74,6 +77,11 @@ export default class WatchOnAirInfoCard extends Vue {
         });
 
         this.displayInfo = this.infoState.getInfo();
+
+        // 取得中に画面を離れた場合はタイマーを設定しない
+        if (this.isDestroyed === true) {
+            return;
+        }
 
         if (this.updateTimer !== null) {
             clearTimeout(this.updateTimer);

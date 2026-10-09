@@ -80,7 +80,11 @@ export default class Recording extends Vue {
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private onUpdateStatusCallback = (async (): Promise<void> => {
-        await this.recordingState.fetchData(this.createFetchDataOption());
+        try {
+            await this.recordingState.fetchData(this.createFetchDataOption());
+        } catch (err) {
+            console.error(err);
+        }
     }).bind(this);
 
     get selectedTitle(): string {
@@ -100,7 +104,9 @@ export default class Recording extends Vue {
     }
 
     public gotoDetail(recordedId: apid.RecordedId): void {
-        Util.move(this.$router, { path: `/recorded/detail/${recordedId.toString(10)}` });
+        Util.move(this.$router, { path: `/recorded/detail/${recordedId.toString(10)}` }).catch(err => {
+            console.error(err);
+        });
     }
 
     public onEdit(): void {
@@ -145,13 +151,15 @@ export default class Recording extends Vue {
         this.recordingState.clearData();
 
         this.$nextTick(async () => {
-            await this.recordingState.fetchData(this.createFetchDataOption()).catch(err => {
+            try {
+                await this.recordingState.fetchData(this.createFetchDataOption());
+            } catch (err) {
                 this.snackbarState.open({
                     color: 'error',
                     text: '録画データ取得に失敗',
                 });
                 console.error(err);
-            });
+            }
 
             // データ取得完了を通知
             await this.scrollState.emitDoneGetData();

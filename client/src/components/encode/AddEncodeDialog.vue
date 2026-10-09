@@ -89,7 +89,7 @@ export default class AddEncodeDialog extends Vue {
             console.error(err);
             this.snackbarState.open({
                 color: 'error',
-                text: 'エンコード追加に失敗しました',
+                text: `エンコード追加に失敗しました${Util.getApiErrorReason(err)}`,
             });
         }
     }

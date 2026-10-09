@@ -1,6 +1,13 @@
 <template>
     <div v-bind:class="{ 'needs-decoration': !!needsDecoration }">
-        <v-card v-for="reserve in reserves" v-bind:key="reserve.id" v-bind:class="getClass(reserve)" class="reserve-card mx-auto" :flat="!!flat" style="cursor: pointer">
+        <v-card
+            v-for="reserve in reserves"
+            v-bind:key="reserve.reserveItem.id"
+            v-bind:class="getClass(reserve)"
+            class="reserve-card mx-auto"
+            :flat="!!flat"
+            style="cursor: pointer"
+        >
             <v-list-item class="px-3" three-line>
                 <div style="width: 100%" v-on:click="clickItem(reserve)">
                     <v-list-item-content>

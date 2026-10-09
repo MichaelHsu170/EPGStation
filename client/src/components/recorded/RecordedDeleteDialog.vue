@@ -123,7 +123,7 @@ export default class RecordedDeleteDialog extends Vue {
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',
-                text: `${this.recordedItem.name} を削除に失敗`,
+                text: `${this.recordedItem.name} を削除に失敗${Util.getApiErrorReason(err)}`,
             });
             console.error(err);
         }
@@ -140,6 +140,11 @@ export default class RecordedDeleteDialog extends Vue {
                 isAllDelete = false;
                 break;
             }
+        }
+
+        // ダイアログを開いた後に追加された動画ファイルがある場合は全件削除しない
+        if (isAllDelete === true && typeof this.recordedItem.videoFiles !== 'undefined') {
+            isAllDelete = this.recordedItem.videoFiles.every(f => this.videoFiles.some(v => v.id === f.id));
         }
 
         // 全件削除

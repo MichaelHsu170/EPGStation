@@ -65,7 +65,9 @@ export default class Navigation extends Vue {
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private versionState: IVersionState = container.get<IVersionState>('IVersionState');
     private onUpdateStatusCallback = (async (): Promise<void> => {
-        await this.versionState.fetchData();
+        await this.versionState.fetchData().catch(err => {
+            console.error(err);
+        });
     }).bind(this);
 
     public created(): void {

@@ -14,6 +14,7 @@ export default class EncodeState implements IEncodeState {
     private channelModel: IChannelModel;
 
     private encodeInfo: EncodeInfoDisplayData | null = null;
+    private fetchDataSeq: number = 0; // 古い取得結果で新しい取得結果を上書きしないための番号
 
     constructor(@inject('IEncodeApiModel') encodeApiModel: IEncodeApiModel, @inject('IChannelModel') channelModel: IChannelModel) {
         this.encodeApiModel = encodeApiModel;
@@ -24,6 +25,7 @@ export default class EncodeState implements IEncodeState {
      * 取得した録画情報をクリア
      */
     public clearData(): void {
+        this.fetchDataSeq++;
         this.encodeInfo = null;
     }
 
@@ -33,11 +35,19 @@ export default class EncodeState implements IEncodeState {
      * @return Promise<void>
      */
     public async fetchData(isHalfWidth: boolean): Promise<void> {
+        const seq = ++this.fetchDataSeq;
         const info = await this.encodeApiModel.gets(isHalfWidth);
+        // 後から開始した取得 (またはクリア) があれば古い結果は捨てる
+        if (seq !== this.fetchDataSeq) {
+            return;
+        }
 
         const oldSelectedIndex: SelectedIndex = {};
         if (this.encodeInfo !== null) {
             for (const e of this.encodeInfo.runningItems) {
+                oldSelectedIndex[e.encodeItem.id] = e.isSelected;
+            }
+            for (const e of this.encodeInfo.waitItems) {
                 oldSelectedIndex[e.encodeItem.id] = e.isSelected;
             }
         }

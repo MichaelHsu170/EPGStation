@@ -34,7 +34,9 @@ export default class RecordedStreamingVideo extends BaseVideo {
     private videoState = container.get<IRecordedStreamingVideoState>('IRecordedStreamingVideoState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private onUpdateStatusCallback = (async (): Promise<void> => {
-        await this.updateVideoInfo();
+        await this.updateVideoInfo().catch(err => {
+            console.error(err);
+        });
     }).bind(this);
     private basePlayPosition: number = 0;
     private dummyPlayPosition: number | null = null; // setCurrentTime が呼ばれている間に再生位置として返すダミー値
@@ -42,6 +44,7 @@ export default class RecordedStreamingVideo extends BaseVideo {
     private lastUpdatePauseState: number = 0; // 最後に pauseStateBeforeCurrentTime を更新した時間
     private updateDurationTimerId: number | undefined; // 録画中の番組の動画長を更新するためのタイマー
     private setCurrentTimeTimerId: number | undefined; // setCurrentTime を大量に呼び出さないようにするためのタイマー
+    private isDestroyed: boolean = false; // 画面を離れた後に再生を開始しないためのフラグ
 
     public created(): void {
         // socket.io イベント
@@ -51,6 +54,11 @@ export default class RecordedStreamingVideo extends BaseVideo {
     public async mounted(): Promise<void> {
         await this.videoState.clear();
         await this.updateVideoInfo();
+
+        // 情報取得中に画面を離れた場合は再生を開始しない
+        if (this.isDestroyed === true) {
+            return;
+        }
 
         super.mounted();
 
@@ -79,8 +87,13 @@ export default class RecordedStreamingVideo extends BaseVideo {
     }
 
     public async beforeDestroy(): Promise<void> {
+        this.isDestroyed = true;
+
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
+
+        clearInterval(this.updateDurationTimerId);
+        clearTimeout(this.setCurrentTimeTimerId);
 
         super.beforeDestroy();
     }

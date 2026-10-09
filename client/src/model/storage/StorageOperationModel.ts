@@ -7,7 +7,8 @@ import IStorageOperationModel from './IStorageOperationModel';
  */
 @injectable()
 export default class StorageOperationModel implements IStorageOperationModel {
-    private dummySavedValue: any | null = null;
+    // local storage が使えない場合に key ごとに値を保持する
+    private dummySavedValues: { [key: string]: string } = {};
 
     /**
      * 値のセット
@@ -19,7 +20,7 @@ export default class StorageOperationModel implements IStorageOperationModel {
             window.localStorage.setItem(key, JSON.stringify(value));
         } catch (err) {
             console.error('local storage save error');
-            this.dummySavedValue = JSON.parse(JSON.stringify(value));
+            this.dummySavedValues[key] = JSON.stringify(value);
         }
     }
 
@@ -29,14 +30,27 @@ export default class StorageOperationModel implements IStorageOperationModel {
      * @return any | null
      */
     public get(key: string): any | null {
-        let value: any | null = null;
+        let value: string | null = null;
         try {
             value = window.localStorage.getItem(key);
         } catch (err) {
-            return this.dummySavedValue;
+            value = typeof this.dummySavedValues[key] === 'undefined' ? null : this.dummySavedValues[key];
         }
 
-        return value === null ? null : JSON.parse(value);
+        if (value === null) {
+            return null;
+        }
+
+        // 壊れた値やオブジェクトではない値 (同じ origin の他のアプリが保存した値など) は null を返してデフォルト値で上書きさせる
+        try {
+            const parsed = JSON.parse(value);
+
+            return parsed !== null && typeof parsed === 'object' ? parsed : null;
+        } catch (err) {
+            console.error(`local storage parse error: ${key}`);
+
+            return null;
+        }
     }
 
     /**

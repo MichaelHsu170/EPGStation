@@ -66,7 +66,9 @@ class RecordedHLSStreamingVideoState extends RecordedStreamingVideoState impleme
                 return;
             }
 
-            await this.streamApiModel.keep(this.streamId);
+            await this.streamApiModel.keep(this.streamId).catch(err => {
+                console.error(err);
+            });
         }, RecordedHLSStreamingVideoState.KEEP_INTERVAL * 1000);
 
         await Util.sleep(1000);

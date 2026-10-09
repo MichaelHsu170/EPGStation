@@ -89,7 +89,7 @@ export default class ReserveMenu extends Vue {
             } catch (err) {
                 this.snackbarState.open({
                     color: 'error',
-                    text: `${this.reserveItem.name} 除外解除失敗`,
+                    text: `${this.reserveItem.name} 除外解除失敗${Util.getApiErrorReason(err)}`,
                 });
             }
         } else if (this.reserveItem.isOverlap === true) {
@@ -103,7 +103,7 @@ export default class ReserveMenu extends Vue {
             } catch (err) {
                 this.snackbarState.open({
                     color: 'error',
-                    text: `${this.reserveItem.name} 重複解除失敗`,
+                    text: `${this.reserveItem.name} 重複解除失敗${Util.getApiErrorReason(err)}`,
                 });
             }
         } else {
@@ -122,6 +122,8 @@ export default class ReserveMenu extends Vue {
             query: {
                 ruleId: this.reserveItem.ruleId.toString(10),
             },
+        }).catch(err => {
+            console.error(err);
         });
     }
 

@@ -71,7 +71,9 @@ export default class Encode extends Vue {
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private onUpdateStatusCallback = (async (): Promise<void> => {
-        await this.encodeState.fetchData(this.isHalfWidth());
+        await this.encodeState.fetchData(this.isHalfWidth()).catch(err => {
+            console.error(err);
+        });
     }).bind(this);
 
     get selectedTitle(): string {

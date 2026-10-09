@@ -73,7 +73,11 @@ export default class Reserves extends Vue {
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private onUpdateStatusCallback = (async (): Promise<void> => {
-        await this.reservesState.fetchData(this.createFetchDataOption());
+        try {
+            await this.reservesState.fetchData(this.createFetchDataOption());
+        } catch (err) {
+            console.error(err);
+        }
     }).bind(this);
 
     get selectedTitle(): string {
@@ -167,13 +171,15 @@ export default class Reserves extends Vue {
     public onUrlChange(): void {
         this.reservesState.clearDate();
         this.$nextTick(async () => {
-            await this.reservesState.fetchData(this.createFetchDataOption()).catch(err => {
+            try {
+                await this.reservesState.fetchData(this.createFetchDataOption());
+            } catch (err) {
                 this.snackbarState.open({
                     color: 'error',
                     text: '予約データ取得に失敗',
                 });
                 console.error(err);
-            });
+            }
 
             this.isVisibilityHidden = false;
 

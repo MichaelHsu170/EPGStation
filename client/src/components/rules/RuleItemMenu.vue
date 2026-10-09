@@ -60,6 +60,8 @@ export default class RuleItemMenu extends Vue {
             query: {
                 ruleId: this.ruleItem.display.id.toString(10),
             },
+        }).catch(err => {
+            console.error(err);
         });
     }
 
@@ -69,6 +71,8 @@ export default class RuleItemMenu extends Vue {
             query: {
                 rule: this.ruleItem.display.id.toString(10),
             },
+        }).catch(err => {
+            console.error(err);
         });
     }
 

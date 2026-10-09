@@ -93,11 +93,11 @@ export default class AppContent extends Vue {
 
         this.isDisconnected = false;
 
-        // reload
+        // reload (現在のページが '/' の場合は NavigationDuplicated になるので無視する)
         const fullPath = this.$route.fullPath;
-        this.$router.replace('/');
+        this.$router.replace('/').catch(() => {});
         this.$nextTick(() => {
-            this.$router.replace(fullPath);
+            this.$router.replace(fullPath).catch(() => {});
 
             this.$nextTick(() => {
                 this.snackbarState.open({
@@ -115,7 +115,7 @@ export default class AppContent extends Vue {
 
         // イベント削除
         io.off('disconnect', this.onDisconnect);
-        io.off('reconnect', this.onReconnect);
+        io.off('connect', this.onReconnect);
     }
 
     /**

@@ -37,6 +37,9 @@ class GuideState implements IGuideState {
     private timeLength: number = 0;
     private schedules: apid.Schedule[] = [];
     private reserveIndex: ReserveStateItemIndex = {};
+    // 古い取得結果で新しい取得結果を上書きしないための番号
+    private fetchGuideSeq: number = 0;
+    private updateReservesSeq: number = 0;
 
     constructor(
         @inject('IScheduleApiModel') scheduleApiModel: IScheduleApiModel,
@@ -56,6 +59,8 @@ class GuideState implements IGuideState {
      * データクリア
      */
     public clearDate(): void {
+        this.fetchGuideSeq++;
+        this.updateReservesSeq++;
         this.displayRange = null;
         this.startAt = 0;
         this.endAt = 0;
@@ -81,6 +86,8 @@ class GuideState implements IGuideState {
      * @param option
      */
     public async fetchGuide(option: FetchGuideOption): Promise<void> {
+        const seq = ++this.fetchGuideSeq;
+
         // 開始時刻設定
         this.startTime = typeof option.time !== 'undefined' ? option.time : DateUtil.format(DateUtil.getJaDate(new Date()), 'YYMMddhh');
         const startAt = this.getStartTime(this.startTime);
@@ -117,8 +124,11 @@ class GuideState implements IGuideState {
                 scheduleOption.isFree = true;
             }
 
-            this.schedules = await this.scheduleApiModel.getSchedules(scheduleOption);
-            this.schedules = this.schedules.filter(s => ChannelModel.isAudioVideoService(s.channel.type));
+            const schedules = await this.scheduleApiModel.getSchedules(scheduleOption);
+            if (seq !== this.fetchGuideSeq) {
+                return;
+            }
+            this.schedules = schedules.filter(s => ChannelModel.isAudioVideoService(s.channel.type));
         } else {
             // 放送局指定
             this.timeLength = GuideState.SINGLE_STATION_LENGTH;
@@ -135,17 +145,26 @@ class GuideState implements IGuideState {
                 scheduleOption.isFree = true;
             }
 
-            this.schedules = await this.scheduleApiModel.getChannelSchedule(scheduleOption);
+            const schedules = await this.scheduleApiModel.getChannelSchedule(scheduleOption);
+            if (seq !== this.fetchGuideSeq) {
+                return;
+            }
+            this.schedules = schedules;
         }
 
         this.startAt = startAt;
         this.endAt = endAt;
 
-        // 予約情報取得
-        this.reserveIndex = await this.reserveUtil.getReserveIndex({
+        // 予約情報取得 (前の範囲で取得中の updateReserves の結果は捨てさせる)
+        const reserveSeq = ++this.updateReservesSeq;
+        const reserveIndex = await this.reserveUtil.getReserveIndex({
             startAt,
             endAt,
         });
+        if (seq !== this.fetchGuideSeq || reserveSeq !== this.updateReservesSeq) {
+            return;
+        }
+        this.reserveIndex = reserveIndex;
     }
 
     /**
@@ -395,10 +414,15 @@ class GuideState implements IGuideState {
      * @reutn Promise<void>
      */
     public async updateReserves(): Promise<void> {
+        const seq = ++this.updateReservesSeq;
         const newReserveIndex = await this.reserveUtil.getReserveIndex({
             startAt: this.startAt,
             endAt: this.endAt,
         });
+        // 後から開始した取得があれば古い予約情報は捨てる
+        if (seq !== this.updateReservesSeq) {
+            return;
+        }
 
         // 古い予約情報の class を削除
         for (const programId in this.reserveIndex) {

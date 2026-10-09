@@ -62,6 +62,7 @@ export default class SearchState implements ISearchState {
     private ruleId: apid.RuleId | null = null;
 
     private searchResult: SearchResultItem[] | null = null;
+    private searchSeq: number = 0; // 古い検索結果で新しい検索結果を上書きしないための番号
     private reservesResult: apid.ReserveItem[] | null = null;
 
     constructor(
@@ -143,6 +144,7 @@ export default class SearchState implements ISearchState {
         this.programDialogState.close();
 
         // 検索結果クリア
+        this.searchSeq++;
         this.searchResult = null;
         this.reservesResult = null;
 
@@ -591,6 +593,7 @@ export default class SearchState implements ISearchState {
     public clear(): void {
         this.initSearchOption();
         this.initTimeReserveOption();
+        this.searchSeq++;
         this.searchResult = null;
     }
 
@@ -855,9 +858,14 @@ export default class SearchState implements ISearchState {
             throw new Error('searchOption is null');
         }
 
+        const seq = ++this.searchSeq;
         const scheduleSearchOption = this.createScheduleSearchOption(this.searchOption);
         const newResult = await this.scheduleApiModel.getScheduleSearch(scheduleSearchOption);
         const reserveIndex = await this.getReserveIndex(newResult);
+        // 後から開始した検索 (またはクリア) があれば古い結果は捨てる
+        if (seq !== this.searchSeq) {
+            return;
+        }
 
         this.searchResult = newResult.map(p => {
             const startAt = DateUtil.getJaDate(new Date(p.startAt));

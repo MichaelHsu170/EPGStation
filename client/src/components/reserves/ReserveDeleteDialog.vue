@@ -80,7 +80,7 @@ export default class ReserveDeleteDialog extends Vue {
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',
-                text: `${this.name} を削除に失敗`,
+                text: `${this.name} を削除に失敗${Util.getApiErrorReason(err)}`,
             });
             console.error(err);
         }

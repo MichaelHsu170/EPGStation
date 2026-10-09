@@ -20,11 +20,7 @@ const createStreamApi = () => {
 
 const states = [
     ['live', api => Object.assign(Object.create(LiveHLSVideoState.prototype), { streamApiModel: api, streamId: null }), s => s.start(1, 0)],
-    [
-        'recorded',
-        api => Object.assign(Object.create(RecordedHLSStreamingVideoState.prototype), { streamApiModel: api, streamId: null, isStarting: false }),
-        s => s.start(1, 0, 0),
-    ],
+    ['recorded', api => Object.assign(Object.create(RecordedHLSStreamingVideoState.prototype), { streamApiModel: api, streamId: null, isStarting: false }), s => s.start(1, 0, 0)],
 ];
 
 for (const [name, create, start] of states) {
@@ -60,5 +56,33 @@ for (const [name, create, start] of states) {
 
         await state.stop();
         assert.deepStrictEqual(api.stopped, [42]);
+    });
+
+    test(`${name} HLS: a failed keep-alive is logged, not left as an unhandled rejection`, { timeout: 5000 }, async t => {
+        t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+        const api = createStreamApi();
+        api.keep = async () => {
+            throw new Error('KeepFailed');
+        };
+        const errors = t.mock.method(console, 'error', () => {});
+        const unhandled = [];
+        const onUnhandled = err => unhandled.push(err);
+        process.on('unhandledRejection', onUnhandled);
+        t.after(() => process.off('unhandledRejection', onUnhandled));
+        const state = create(api);
+
+        const starting = start(state);
+        api.release();
+        await new Promise(setImmediate);
+        t.mock.timers.tick(1000);
+        await starting;
+        t.mock.timers.tick(10 * 1000);
+        await new Promise(setImmediate);
+        await new Promise(setImmediate);
+
+        assert.deepStrictEqual(unhandled, []);
+        assert.strictEqual(errors.mock.calls.length, 1);
+        assert.strictEqual(errors.mock.calls[0].arguments[0].message, 'KeepFailed');
+        await state.stop();
     });
 }

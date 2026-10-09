@@ -26,6 +26,7 @@ export default class LiveHLSVideo extends BaseVideo {
     private checkEnabledTimerId: number | undefined;
     private hls: Hls | null = null;
     private b24RenderState: IB24RenderState = container.get<IB24RenderState>('IB24RenderState');
+    private isDestroyed: boolean = false; // 画面を離れた後に再生を開始しないためのフラグ
 
     public async mounted(): Promise<void> {
         // HLS stream 開始
@@ -43,7 +44,8 @@ export default class LiveHLSVideo extends BaseVideo {
 
         // ストリームが有効になるまで待つ
         this.checkEnabledTimerId = setInterval(async () => {
-            if ((await this.videoState.isEnabled()) === false) {
+            // 確認中に画面を離れた場合は再生を開始しない
+            if ((await this.videoState.isEnabled()) === false || this.isDestroyed === true) {
                 return;
             }
 
@@ -53,6 +55,8 @@ export default class LiveHLSVideo extends BaseVideo {
     }
 
     public async beforeDestroy(): Promise<void> {
+        this.isDestroyed = true;
+
         // ストリームが有効になる前に画面を離れた場合も確認を止める
         clearInterval(this.checkEnabledTimerId);
 

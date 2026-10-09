@@ -53,6 +53,17 @@ namespace DateUtil {
 
         return new Date(localDate.getTime() + offSet);
     };
+
+    /**
+     * getJaDate() で日本時間にした Date を元の時刻 (UnixtimeMS) に戻す
+     * @param jaDate Date
+     * @return number
+     */
+    export const getTimeFromJaDate = (jaDate: Date): number => {
+        const offSet = jaDate.getTimezoneOffset() * 60 * 1000 + 1000 * 60 * 60 * 9;
+
+        return jaDate.getTime() - offSet;
+    };
 }
 
 export default DateUtil;

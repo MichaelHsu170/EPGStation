@@ -21,6 +21,9 @@ interface VideoSrcInfo {
     playPosition: number;
 }
 
+// setCurrentTime でストリームの再開を再試行する回数
+const MAX_SEEK_RETRY = 3;
+
 @Component({})
 export default class RecordedHLSStreamingVideo extends BaseVideo {
     @Prop({ required: true })
@@ -36,7 +39,9 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
     private snackbarState: ISnackbarState = container.get<ISnackbarState>('ISnackbarState');
     private socketIoModel: ISocketIOModel = container.get<ISocketIOModel>('ISocketIOModel');
     private onUpdateStatusCallback = (async (): Promise<void> => {
-        await this.updateVideoInfo();
+        await this.updateVideoInfo().catch(err => {
+            console.error(err);
+        });
     }).bind(this);
     private hls: Hls | null = null;
     private b24RenderState: IB24RenderState = container.get<IB24RenderState>('IB24RenderState');
@@ -48,6 +53,8 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
     private setCurrentTimeTimerId: number | undefined; // setCurrentTime を大量に呼び出さないようにするためのタイマー
     private checkEnabledTimerId: number | undefined; // ストリームが有効になったか確認するためのタイマー
     private lastSeekTime: number = 0; // setCurrentTime 実行中に setCurrentTime が重ねて実行されたか確認するための変数
+    private seekRetryCount: number = 0; // setCurrentTime でストリームの再開に失敗した回数
+    private isDestroyed: boolean = false; // 画面を離れた後にストリームを開始しないためのフラグ
 
     public created(): void {
         // socket.io イベント
@@ -58,6 +65,11 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
         this.$nextTick(async () => {
             await this.videoState.clear();
             await this.updateVideoInfo();
+
+            // 情報取得中に画面を離れた場合はストリームを開始しない
+            if (this.isDestroyed === true) {
+                return;
+            }
 
             // 録画中の場合は duration が変化するので定期的に timeupdate を発行する
             if (this.videoState.isRecording() === true) {
@@ -81,6 +93,9 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
 
             // ストリームが有効になるまで待つ
             await this.waitForEnabled();
+            if ((this.isDestroyed as boolean) === true) {
+                return;
+            }
             super.mounted();
         });
     }
@@ -97,7 +112,7 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
 
             // ストリームが有効になるまで待つ
             this.checkEnabledTimerId = setInterval(async () => {
-                if ((await this.videoState.isEnabled()) === false) {
+                if ((await this.videoState.isEnabled()) === false || this.isDestroyed === true) {
                     return;
                 }
 
@@ -119,11 +134,15 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
     }
 
     public async beforeDestroy(): Promise<void> {
+        this.isDestroyed = true;
+
         // socket.io イベント
         this.socketIoModel.offUpdateState(this.onUpdateStatusCallback);
 
         // ストリームが有効になる前に画面を離れた場合も確認を止める
         clearInterval(this.checkEnabledTimerId);
+        clearInterval(this.updateDurationTimerId);
+        clearTimeout(this.setCurrentTimeTimerId);
 
         super.beforeDestroy();
 
@@ -277,7 +296,7 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
                     return;
                 }
                 await this.videoState.stop();
-                if (this.lastSeekTime !== beforeStartStream) {
+                if (this.lastSeekTime !== beforeStartStream || this.isDestroyed === true) {
                     return;
                 }
                 await this.videoState.start(this.videoFileId, this.basePlayPosition, this.mode);
@@ -285,7 +304,7 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
                     return;
                 }
                 await this.waitForEnabled();
-                if (this.lastSeekTime !== beforeStartStream) {
+                if (this.lastSeekTime !== beforeStartStream || (this.isDestroyed as boolean) === true) {
                     return;
                 }
                 this.initVideoSetting();
@@ -294,11 +313,30 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
                 }
             } catch (err) {
                 console.error(err);
-                await this.videoState.stop();
+                await this.videoState.stop().catch(e => {
+                    console.error(e);
+                });
+                if (this.isDestroyed === true) {
+                    return;
+                }
+
+                // 失敗し続ける場合は再試行をやめて通知する
+                this.seekRetryCount++;
+                if (this.seekRetryCount > MAX_SEEK_RETRY) {
+                    this.seekRetryCount = 0;
+                    this.snackbarState.open({
+                        color: 'error',
+                        text: 'ストリーム開始に失敗',
+                    });
+
+                    return;
+                }
+
                 this.setCurrentTime(time);
 
                 return;
             }
+            this.seekRetryCount = 0;
 
             if (HLSUtil.isSupportedHLSjs() === true) {
                 this.video.currentTime = 0;

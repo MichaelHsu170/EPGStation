@@ -16,6 +16,7 @@ export default class RuleState implements IRuleState {
 
     private rules: RuleStateData[] | null = null;
     private total: number = 0;
+    private fetchDataSeq: number = 0; // 古い取得結果で新しい取得結果を上書きしないための番号
 
     constructor(@inject('IChannelModel') channelModel: IChannelModel, @inject('IRuleApiModel') ruleApiModel: IRuleApiModel) {
         this.channelModel = channelModel;
@@ -26,6 +27,7 @@ export default class RuleState implements IRuleState {
      * 取得したルール情報をクリア
      */
     public clearData(): void {
+        this.fetchDataSeq++;
         this.rules = null;
     }
 
@@ -35,7 +37,12 @@ export default class RuleState implements IRuleState {
      * @return Promise<void>
      */
     public async fetchData(option: RuleFetchOption): Promise<void> {
+        const seq = ++this.fetchDataSeq;
         const result = await this.ruleApiModel.gets(option);
+        // 後から開始した取得 (またはクリア) があれば古い結果は捨てる
+        if (seq !== this.fetchDataSeq) {
+            return;
+        }
 
         const isSelectedIndex: SelectedIndex = {};
         if (this.rules !== null) {
