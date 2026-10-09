@@ -49,13 +49,14 @@ ENV NV_CODEC_HEADERS_VERSION=n13.0.19.1
 # CUDA 13.x は Pascal (GTX 10 系) のコンパイル対象を削除したため 12.x 系列に固定する。
 # apt 経由の cuda-toolkit パッケージは NVIDIA 側で古いバージョンが削除される可能性があるため使わない。
 # インストーラーは launch.sh がホスト側の共有キャッシュ (vendor/cuda/cuda.env でバージョン管理) から
-# 取得し、ビルドコンテキストの docker/cuda_installer.run に配置した上でここに COPY される
+# 取得して docker-compose.yml の additional_contexts: cuda に配置し、ここに COPY される。
+# メインのビルドコンテキストに置くと client/server のステージにもコピーされ、最終イメージに残るため使わない
 RUN apt-get update && \
     apt-get -y install ${DEV} && \
     apt-get -y install nasm libx264-dev libmp3lame-dev libopus-dev libvpx-dev && \
     apt-get -y install libx265-dev libnuma-dev && \
     apt-get -y install libasound2 libass9 libvdpau1 libva-x11-2 libva-drm2 libxcb-shm0 libxcb-xfixes0 libxcb-shape0 libvorbisenc2 libtheora0 libaribb24-dev
-COPY docker/cuda_installer.run /tmp/cuda_installer.run
+COPY --from=cuda cuda_installer.run /tmp/cuda_installer.run
 RUN sh /tmp/cuda_installer.run --silent --toolkit < /dev/null && rm -f /tmp/cuda_installer.run
 RUN git clone --branch ${NV_CODEC_HEADERS_VERSION} --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git && \
     cd nv-codec-headers && make install && cd ..
