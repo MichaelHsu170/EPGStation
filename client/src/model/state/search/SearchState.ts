@@ -1,5 +1,5 @@
-import IReservesApiModel from '@/model/api/reserves/IReservesApiModel';
-import IRuleApiModel from '@/model/api/rule/IRuleApiModel';
+import IReservesApiModel from '../../api/reserves/IReservesApiModel';
+import IRuleApiModel from '../../api/rule/IRuleApiModel';
 import { inject, injectable } from 'inversify';
 import { cloneDeep } from 'lodash';
 import * as apid from '../../../../../api';
@@ -1043,10 +1043,11 @@ export default class SearchState implements ISearchState {
         }
 
         // duration
-        if (option.durationMin !== null) {
+        // キーボードで消した v-text-field (v-model.number) は '' になるので, 数値の時だけ送る
+        if (typeof option.durationMin === 'number') {
             ruleOption.durationMin = option.durationMin * 60;
         }
-        if (option.durationMax !== null) {
+        if (typeof option.durationMax === 'number') {
             ruleOption.durationMax = option.durationMax * 60;
         }
 
