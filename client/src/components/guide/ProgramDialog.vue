@@ -61,6 +61,7 @@
 </template>
 
 <script lang="ts">
+import * as apid from '../../../../api';
 import container from '@/model/ModelContainer';
 import IGuideProgramDialogState from '@/model/state/guide/IGuideProgramDialogState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
@@ -78,7 +79,7 @@ export default class ProgramDialog extends Vue {
     public isRemove: boolean = false;
 
     private snackbarState = container.get<ISnackbarState>('ISnackbarState');
-    private isAddingReserve: boolean = false; // 予約の二重送信防止
+    private addingReserveProgramIds = new Set<apid.ProgramId>(); // 予約の二重送信防止 (番組ごと)
 
     /**
      * 手動予約
@@ -192,94 +193,111 @@ export default class ProgramDialog extends Vue {
      * 簡易手動予約
      */
     public async addReserve(): Promise<void> {
-        if (this.isAddingReserve === true) {
+        // 応答までにダイアログが閉じられたり別の番組が開かれたりするので, 操作した番組を先に取っておく
+        const programId = this.dialogState.getProgramId();
+        const programName = this.dialogState.displayData?.programName;
+        if (programId === null || this.addingReserveProgramIds.has(programId) === true) {
             return;
         }
-        this.isAddingReserve = true;
+        this.addingReserveProgramIds.add(programId);
 
         try {
             await this.dialogState.addReserve();
-            if (this.dialogState.displayData !== null) {
+            if (typeof programName !== 'undefined') {
                 this.snackbarState.open({
-                    text: `${this.dialogState.displayData.programName} 予約`,
+                    text: `${programName} 予約`,
                 });
             }
         } catch (err) {
-            if (this.dialogState.displayData !== null) {
+            if (typeof programName !== 'undefined') {
                 this.snackbarState.open({
                     color: 'error',
-                    text: `${this.dialogState.displayData.programName} 予約失敗${Util.getApiErrorReason(err)}`,
+                    text: `${programName} 予約失敗${Util.getApiErrorReason(err)}`,
                 });
             }
         }
-        this.isAddingReserve = false;
-        this.dialogState.isOpen = false;
+        this.addingReserveProgramIds.delete(programId);
+        if (this.dialogState.getProgramId() === programId) {
+            this.dialogState.isOpen = false;
+        }
     }
 
     /**
      * 予約キャンセル
      */
     public async cancelReserve(): Promise<void> {
+        const programId = this.dialogState.getProgramId();
+        const programName = this.dialogState.displayData?.programName;
         try {
             await this.dialogState.cancelReserve();
-            if (this.dialogState.displayData !== null) {
+            if (typeof programName !== 'undefined') {
                 this.snackbarState.open({
-                    text: `${this.dialogState.displayData.programName} キャンセル`,
+                    text: `${programName} キャンセル`,
                 });
             }
         } catch (err) {
-            if (this.dialogState.displayData !== null) {
+            if (typeof programName !== 'undefined') {
                 this.snackbarState.open({
                     color: 'error',
-                    text: `${this.dialogState.displayData.programName} キャンセル失敗${Util.getApiErrorReason(err)}`,
+                    text: `${programName} キャンセル失敗${Util.getApiErrorReason(err)}`,
                 });
             }
         }
-        this.dialogState.isOpen = false;
+        if (this.dialogState.getProgramId() === programId) {
+            this.dialogState.isOpen = false;
+        }
     }
 
     /**
      * 予約の除外状態解除
      */
     public async removeReserveSkip(): Promise<void> {
+        const programId = this.dialogState.getProgramId();
+        const programName = this.dialogState.displayData?.programName;
         try {
             await this.dialogState.removeReserveSkip();
-            if (this.dialogState.displayData !== null) {
+            if (typeof programName !== 'undefined') {
                 this.snackbarState.open({
-                    text: `${this.dialogState.displayData.programName} 除外解除`,
+                    text: `${programName} 除外解除`,
                 });
             }
         } catch (err) {
-            if (this.dialogState.displayData !== null) {
+            if (typeof programName !== 'undefined') {
                 this.snackbarState.open({
                     color: 'error',
-                    text: `${this.dialogState.displayData.programName} 除外解除失敗${Util.getApiErrorReason(err)}`,
+                    text: `${programName} 除外解除失敗${Util.getApiErrorReason(err)}`,
                 });
             }
         }
-        this.dialogState.isOpen = false;
+        if (this.dialogState.getProgramId() === programId) {
+            this.dialogState.isOpen = false;
+        }
     }
 
     /**
      * 予約の重複状態解除
      */
     public async removeReserveOverlap(): Promise<void> {
+        const programId = this.dialogState.getProgramId();
+        const programName = this.dialogState.displayData?.programName;
         try {
-            if (this.dialogState.displayData !== null) {
+            if (typeof programName !== 'undefined') {
                 await this.dialogState.removeReserveOverlap();
                 this.snackbarState.open({
-                    text: `${this.dialogState.displayData.programName} 重複解除`,
+                    text: `${programName} 重複解除`,
                 });
             }
         } catch (err) {
-            if (this.dialogState.displayData !== null) {
+            if (typeof programName !== 'undefined') {
                 this.snackbarState.open({
                     color: 'error',
-                    text: `${this.dialogState.displayData.programName} 重複解除失敗${Util.getApiErrorReason(err)}`,
+                    text: `${programName} 重複解除失敗${Util.getApiErrorReason(err)}`,
                 });
             }
         }
-        this.dialogState.isOpen = false;
+        if (this.dialogState.getProgramId() === programId) {
+            this.dialogState.isOpen = false;
+        }
     }
 
     /**
