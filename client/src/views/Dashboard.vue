@@ -322,7 +322,7 @@ class Dashboard extends Vue {
             console.error(err);
             this.snackbarState.open({
                 color: 'error',
-                text: 'エンコード停止に失敗',
+                text: `エンコード停止に失敗${Util.getApiErrorReason(err)}`,
             });
         }
     }

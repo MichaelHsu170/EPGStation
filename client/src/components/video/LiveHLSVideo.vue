@@ -9,6 +9,7 @@ import ILiveHLSVideoState from '@/model/state/onair/ILiveHLSVideoState';
 import IB24RenderState from '@/model/state/recorded/streaming/IB24RenderState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
 import HLSUtil from '@/util/HLSUtil';
+import Util from '@/util/Util';
 import Hls from 'hls.js';
 import { Component, Prop, Watch } from 'vue-property-decorator';
 import * as apid from '../../../../api';
@@ -37,7 +38,7 @@ export default class LiveHLSVideo extends BaseVideo {
             }
             this.snackbarState.open({
                 color: 'error',
-                text: 'ストリーム開始に失敗',
+                text: `ストリーム開始に失敗${Util.getApiErrorReason(err)}`,
             });
         });
 

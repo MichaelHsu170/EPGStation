@@ -87,7 +87,7 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
             await this.videoState.start(this.videoFileId, this.basePlayPosition, this.mode).catch(err => {
                 this.snackbarState.open({
                     color: 'error',
-                    text: 'ストリーム開始に失敗',
+                    text: `ストリーム開始に失敗${Util.getApiErrorReason(err)}`,
                 });
             });
 
@@ -347,7 +347,7 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
                     this.seekRetryCount = 0;
                     this.snackbarState.open({
                         color: 'error',
-                        text: 'ストリーム開始に失敗',
+                        text: `ストリーム開始に失敗${Util.getApiErrorReason(err)}`,
                     });
 
                     return;

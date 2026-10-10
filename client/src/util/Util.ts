@@ -159,9 +159,15 @@ namespace Util {
      */
     export const getApiErrorReason = (err: any): string => {
         const data = err?.response?.data;
+        // API の入力チェックエラーは { status: 400, errors: [{ message: 'must be integer' }, ...] } になる. 同じ理由は 1 回だけ表示する
+        const validationMessages: string[] = Array.isArray(data?.errors)
+            ? data.errors.map((e: any) => e?.message).filter((m: any, i: number, all: any[]) => typeof m === 'string' && m.length > 0 && all.indexOf(m) === i)
+            : [];
         let reason = '';
         if (typeof data?.errors === 'string') {
             reason = data.errors;
+        } else if (validationMessages.length > 0) {
+            reason = validationMessages.join(', ');
         } else if (typeof data?.message === 'string') {
             reason = data.message;
         } else if (typeof err?.message === 'string') {

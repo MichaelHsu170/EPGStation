@@ -96,7 +96,7 @@ export default class Search extends Vue {
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',
-                text: '検索に失敗',
+                text: `検索に失敗${Util.getApiErrorReason(err)}`,
             });
             console.error(err);
 

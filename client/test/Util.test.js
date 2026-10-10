@@ -13,6 +13,22 @@ test('getApiErrorReason falls back to the response message, then the error messa
     assert.strictEqual(Util.getApiErrorReason({ message: 'Network Error' }), ' (Network Error)');
 });
 
+test('getApiErrorReason shows the reasons of an API input check error once each', () => {
+    // the body the server sends for a request its OpenAPI schema rejects (checked on the live API)
+    const err = {
+        message: 'Request failed with status code 400',
+        response: { data: { status: 400, errors: [{ message: 'must be integer' }, { message: 'must be integer' }, { message: 'must be >= 0' }] } },
+    };
+
+    assert.strictEqual(Util.getApiErrorReason(err), ' (must be integer, must be >= 0)');
+});
+
+test('getApiErrorReason falls back to the error message when an input check error has no reason', () => {
+    const err = { message: 'Request failed with status code 400', response: { data: { status: 400, errors: [{}] } } };
+
+    assert.strictEqual(Util.getApiErrorReason(err), ' (Request failed with status code 400)');
+});
+
 test('getApiErrorReason is empty when there is no reason', () => {
     assert.strictEqual(Util.getApiErrorReason(undefined), '');
     assert.strictEqual(Util.getApiErrorReason({}), '');

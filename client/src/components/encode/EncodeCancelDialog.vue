@@ -78,7 +78,7 @@ export default class EncodeCancelDialog extends Vue {
             this.$nextTick(() => {
                 this.snackbarState.open({
                     color: 'error',
-                    text: `[${this.item.mode}] ${this.item.recorded.name} の停止に失敗`,
+                    text: `[${this.item.mode}] ${this.item.recorded.name} の停止に失敗${Util.getApiErrorReason(err)}`,
                 });
             });
         }

@@ -22,6 +22,7 @@ import container from '@/model/ModelContainer';
 import IScrollPositionState from '@/model/state/IScrollPositionState';
 import IRecordedUploadState from '@/model/state/recorded/upload/IRecordedUploadState';
 import ISnackbarState from '@/model/state/snackbar/ISnackbarState';
+import Util from '@/util/Util';
 import { Component, Vue, Watch } from 'vue-property-decorator';
 import { Route } from 'vue-router';
 
@@ -70,7 +71,7 @@ export default class RecordedUpload extends Vue {
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',
-                text: 'アップロードに失敗',
+                text: `アップロードに失敗${Util.getApiErrorReason(err)}`,
             });
             console.error(err);
         }

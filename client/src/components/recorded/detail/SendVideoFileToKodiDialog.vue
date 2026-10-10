@@ -70,7 +70,7 @@ export default class SendVideoFileToKodiDialog extends Vue {
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',
-                text: '送信に失敗しました',
+                text: `送信に失敗しました${Util.getApiErrorReason(err)}`,
             });
         }
     }

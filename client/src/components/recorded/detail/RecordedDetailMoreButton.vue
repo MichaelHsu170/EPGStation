@@ -133,7 +133,7 @@ export default class RecordedDetailMoreButton extends Vue {
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',
-                text: '保護解除に失敗',
+                text: `保護解除に失敗${Util.getApiErrorReason(err)}`,
             });
         }
     }
@@ -148,7 +148,7 @@ export default class RecordedDetailMoreButton extends Vue {
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',
-                text: '保護に失敗',
+                text: `保護に失敗${Util.getApiErrorReason(err)}`,
             });
         }
     }

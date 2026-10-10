@@ -214,7 +214,7 @@ export default class RecordedDetail extends Vue {
         } catch (err) {
             this.snackbarState.open({
                 color: 'error',
-                text: 'エンコード停止に失敗',
+                text: `エンコード停止に失敗${Util.getApiErrorReason(err)}`,
             });
         }
     }
