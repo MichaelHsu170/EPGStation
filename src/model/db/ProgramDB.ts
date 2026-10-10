@@ -867,7 +867,7 @@ export default class ProgramDB implements IProgramDB {
             'case when id in ' +
             '(' +
             'select P.id from program as P, recorded_history as R ' +
-            'where P.shortName = R.name ' +
+            `where ${this.op.getEqualQuery('P.shortName', 'R.name')} ` +
             'and P.channelId = R.channelId ';
 
         // 重複検索日数

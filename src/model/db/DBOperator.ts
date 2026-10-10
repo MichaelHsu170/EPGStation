@@ -259,6 +259,29 @@ export default class DBOperator implements IDBOperator {
     }
 
     /**
+     * 2 つの列 (式) の値が一致する条件式を返す
+     * 照合は大小文字を区別しない部分一致検索 (getLikeQuery) と同じ (濁点・半濁点は区別し、大小文字は区別しない)
+     * @param column1: string 列 (式)
+     * @param column2: string 列 (式)
+     * @return string
+     */
+    public getEqualQuery(column1: string, column2: string): string {
+        switch (this.config.dbtype) {
+            case 'mysql':
+                // getLikeQuery と同じく utf8mb4_0900_as_ci で照合する
+                // (utf8mb4_0900_as_ci は utf8mb4 の値にしか指定できないため、列が utf8 (utf8mb3) でも使えるよう変換する)
+                return `${column1} = CONVERT(${column2} USING utf8mb4) COLLATE utf8mb4_0900_as_ci`;
+            case 'postgres':
+                // ilike と同じく大小文字を区別しない
+                return `lower(${column1}) = lower(${column2})`;
+            case 'sqlite':
+            default:
+                // like と同じく ASCII の大小文字のみ区別しない
+                return `${column1} = ${column2} collate nocase`;
+        }
+    }
+
+    /**
      * str を含む部分一致 (like) 検索の値を返す
      * str 中の % と _ はワイルドカードとして扱わない (全角の ％ ＿ も半角化で % _ になるため)
      * @param str: string

@@ -123,6 +123,18 @@ test('LIKE search conditions per database', () => {
     assert.strictEqual(op('sqlite').getLikeQuery('halfWidthName', 'v', false), "halfWidthName like :v escape '!'");
 });
 
+test('equal title conditions per database compare like a case-insensitive LIKE search', () => {
+    const op = dbtype => Object.assign(Object.create(DBOperator.prototype), { config: { dbtype } });
+
+    // MariaDB 12.3: utf8mb4_unicode_ci gives 'カラス' = 'ガラス', utf8mb4_0900_as_ci does not
+    assert.strictEqual(
+        op('mysql').getEqualQuery('P.shortName', 'R.name'),
+        'P.shortName = CONVERT(R.name USING utf8mb4) COLLATE utf8mb4_0900_as_ci',
+    );
+    assert.strictEqual(op('postgres').getEqualQuery('P.shortName', 'R.name'), 'lower(P.shortName) = lower(R.name)');
+    assert.strictEqual(op('sqlite').getEqualQuery('P.shortName', 'R.name'), 'P.shortName = R.name collate nocase');
+});
+
 test('a LIKE keyword matches its % _ and ! literally', () => {
     const op = Object.assign(Object.create(DBOperator.prototype), { config: { dbtype: 'mysql' } });
 

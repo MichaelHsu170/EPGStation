@@ -32,3 +32,12 @@ test('a case-sensitive regex keyword is searched through the database operator',
     assert.ok(query.strs[0].includes("COALESCE(halfWidthDescription,'') COLLATE utf8mb4_bin regexp :keywordRegexp"), query.strs[0]);
     assert.ok(!query.strs[0].includes('AS BINARY'), query.strs[0]);
 });
+
+test('avoid duplicates compares program and recorded history titles through the database operator', () => {
+    const db = Object.create(ProgramDB.prototype);
+    db.op = { getEqualQuery: (a, b) => `${a} = ${b} COLLATE x` };
+
+    const str = db.createOverlapQueryStr(0);
+
+    assert.ok(str.includes('where P.shortName = R.name COLLATE x and P.channelId = R.channelId '), str);
+});
