@@ -39,3 +39,26 @@ test('upload: a video file whose name was deleted with the keyboard is an input 
     await assert.rejects(state.upload(), { message: 'InputError' });
     assert.deepStrictEqual(calls, []);
 });
+
+test('upload: a second video file with a missing field is an input error, and no program is created', async () => {
+    const second = { key: 1, parentDirectoryName: 'recorded', subDirectory: null, viewName: 'MP4', fileType: 'encoded', file: { name: 'a.mp4' } };
+    for (const missing of [{ fileType: undefined }, { viewName: '' }, { file: null }, { parentDirectoryName: undefined }]) {
+        const calls = [];
+        const state = createState('TS', calls);
+        state.videoFileItems.push({ ...second, ...missing });
+
+        assert.strictEqual(state.checkInput(), false, JSON.stringify(missing));
+        await assert.rejects(state.upload(), { message: 'InputError' });
+        assert.deepStrictEqual(calls, []);
+    }
+});
+
+test('upload: every complete video file is uploaded to the new program', async () => {
+    const calls = [];
+    const state = createState('TS', calls);
+    state.videoFileItems.push({ key: 1, parentDirectoryName: 'recorded', subDirectory: null, viewName: 'MP4', fileType: 'encoded', file: { name: 'a.mp4' } });
+
+    assert.strictEqual(state.checkInput(), true);
+    await state.upload();
+    assert.deepStrictEqual(calls, ['createNewRecorded program', 'uploadedVideoFile 42 TS', 'uploadedVideoFile 42 MP4']);
+});

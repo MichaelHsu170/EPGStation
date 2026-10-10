@@ -208,7 +208,8 @@ class RecordedUploadState implements IRecordedUploadState {
             return false;
         }
 
-        if (this.videoFileItems.length === 0 || this.checkVideoFileItemInput(this.videoFileItems[0]) === false) {
+        // 2 つ目以降のファイルも確認する. 入力が足りないファイルは upload で送られないため
+        if (this.videoFileItems.length === 0 || this.videoFileItems.every(item => this.checkVideoFileItemInput(item)) === false) {
             return false;
         }
 
