@@ -43,8 +43,13 @@ export default class RuleManageModel implements IRuleManageModel {
 
         this.log.system.info('add rule');
 
-        // check option
-        if (this.optionChecker.checkRuleOption(rule) === false || (await this.hasValidRegexps(rule)) === false) {
+        // check option (DB エラー等で例外が発生してもロックを開放する)
+        const isValid = await this.isValidRule(rule).catch(err => {
+            this.unlockExecution();
+            this.log.system.error(err);
+            throw err;
+        });
+        if (isValid === false) {
             this.unlockExecution();
             this.log.system.error('failed to add rule');
             throw new Error('AddRuleError');
@@ -95,8 +100,13 @@ export default class RuleManageModel implements IRuleManageModel {
 
         this.log.system.info(`update rule: ${rule.id}`);
 
-        // check option
-        if (this.optionChecker.checkRuleOption(rule) === false || (await this.hasValidRegexps(rule)) === false) {
+        // check option (DB エラー等で例外が発生してもロックを開放する)
+        const isValid = await this.isValidRule(rule).catch(err => {
+            this.unlockExecution();
+            this.log.system.error(err);
+            throw err;
+        });
+        if (isValid === false) {
             this.unlockExecution();
             this.log.system.error('failed to update rule');
             throw new Error('UpdateRuleError');
@@ -210,6 +220,15 @@ export default class RuleManageModel implements IRuleManageModel {
     }
 
     /**
+     * ルールのオプションと正規表現をチェックする
+     * @param rule: apid.AddRuleOption
+     * @return Promise<boolean>
+     */
+    private async isValidRule(rule: apid.AddRuleOption): Promise<boolean> {
+        return this.optionChecker.checkRuleOption(rule) === true && (await this.hasValidRegexps(rule)) === true;
+    }
+
+    /**
      * 正規表現として指定されたキーワードが DB で使用できるか
      * (使用できないと予約更新が毎回失敗し、更新前の予約が残り続ける)
      * @param rule: apid.AddRuleOption
@@ -238,7 +257,7 @@ export default class RuleManageModel implements IRuleManageModel {
         if (this.isRunning === true) {
             throw new Error('RuleManageModelIsRunning');
         }
-        this.isRunning = false;
+        this.isRunning = true;
 
         this.lockTimer = setTimeout(() => {
             this.unlockExecution();

@@ -10,7 +10,7 @@ const createModel = members => {
         isRunning: false,
         optionChecker: { checkRuleOption: () => true },
         op: { isValidRegexp: async pattern => pattern !== 'foo(bar' },
-        ruleEvent: { emitAdded: () => {}, emitUpdated: () => {} },
+        ruleEvent: { emitAdded: () => {}, emitUpdated: () => {}, emitEnabled: () => {}, emitDisabled: () => {} },
         ruleDB: {},
         ...members,
     });
@@ -60,4 +60,45 @@ test('a valid regex, or the same text without the regex option, is accepted', as
 
     assert.strictEqual(await model.add(rule({ keyword: 'foo(bar' })), 1);
     assert.strictEqual(await model.add(rule({ keyword: '^ド.マ$', keyRegExp: true })), 1);
+});
+
+test('a rule operation started while another is running is refused, and runs once the first one is done', async () => {
+    let finishEnable;
+    const calls = [];
+    const model = createModel({
+        ruleDB: {
+            enableOnce: async id => (calls.push(`enable ${id}`), new Promise(resolve => (finishEnable = resolve))),
+            disableOnce: async id => calls.push(`disable ${id}`),
+        },
+    });
+
+    const enabling = model.enable(1);
+    await assert.rejects(model.disable(1), /RuleManageModelIsRunning/);
+    assert.deepStrictEqual(calls, ['enable 1']);
+
+    finishEnable();
+    await enabling;
+    await model.disable(1);
+    assert.deepStrictEqual(calls, ['enable 1', 'disable 1']);
+});
+
+test('a rule check that throws releases the lock on add and update', async () => {
+    let checks = 0;
+    const model = createModel({
+        // the first regex check fails with a database error, later ones succeed
+        op: { isValidRegexp: async () => (++checks === 1 ? Promise.reject(new Error('db down')) : true) },
+        ruleDB: { insertOnce: async () => 1, findId: async () => ({ id: 1 }), updateOnce: async () => {} },
+    });
+
+    await assert.rejects(model.add(rule({ keyword: 'a', keyRegExp: true })), /db down/);
+    assert.strictEqual(await model.add(rule({ keyword: 'a', keyRegExp: true })), 1);
+
+    model.optionChecker = {
+        checkRuleOption: () => {
+            throw new Error('bad option');
+        },
+    };
+    await assert.rejects(model.update({ id: 1, ...rule({ keyword: 'a' }) }), /bad option/);
+    model.optionChecker = { checkRuleOption: () => true };
+    await model.update({ id: 1, ...rule({ keyword: 'a' }) });
 });
