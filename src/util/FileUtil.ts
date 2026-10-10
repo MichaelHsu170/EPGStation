@@ -299,6 +299,22 @@ namespace FileUtil {
 
         return relative.split(path.sep)[0] !== '..' && path.isAbsolute(relative) === false;
     };
+
+    const CLEANUP_SKIP_RECENT_TIME = 10 * 60 * 1000; // この時間内に更新されたファイルは掃除しない
+
+    /**
+     * 掃除対象外とする最近更新されたファイルか (更新時刻が取れない場合は false)
+     * (書き込み中でまだ DB に登録されていないファイルを掃除で削除しないため)
+     * @param filePath: string ファイルパス
+     * @return Promise<boolean>
+     */
+    export const isRecentlyModified = async (filePath: string): Promise<boolean> => {
+        const mtime = await FileUtil.stat(filePath)
+            .then(stats => stats.mtimeMs)
+            .catch(() => 0);
+
+        return mtime > new Date().getTime() - CLEANUP_SKIP_RECENT_TIME;
+    };
 }
 
 export default FileUtil;

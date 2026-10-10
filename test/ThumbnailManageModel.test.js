@@ -18,7 +18,13 @@ const createModel = (t, ffmpegScript, videoPath) => {
     const model = Object.create(ThumbnailManageModel.prototype);
     Object.assign(model, {
         log: { system: { info: () => {}, warn: () => {}, error: () => {}, fatal: () => {}, debug: () => {} } },
-        config: { thumbnail: dir, thumbnailCmd: '%FFMPEG% %INPUT% %OUTPUT%', ffmpeg, thumbnailPosition: 5, thumbnailSize: '480x270' },
+        config: {
+            thumbnail: dir,
+            thumbnailCmd: '%FFMPEG% %INPUT% %OUTPUT%',
+            ffmpeg,
+            thumbnailPosition: 5,
+            thumbnailSize: '480x270',
+        },
         videoFileDB: { findId: async () => ({ recordedId: 1 }) },
         videoUtil: { getFullFilePathFromId: async () => videoPath },
         thumbnailDB: { insertOnce: async () => 1 },
@@ -57,4 +63,18 @@ test('a failed thumbnail command leaves no partial file behind', async t => {
     await assert.rejects(model.create(1), /CreateThumbnailExitError/);
 
     assert.deepStrictEqual(fs.readdirSync(dir), ['ffmpeg']);
+});
+
+test('thumbnail cleanup keeps a thumbnail written in the last minutes, such as one still being created', async t => {
+    const { model, dir } = createModel(t, 'exit 0', '/rec/a.m2ts');
+    model.thumbnailDB = { findAll: async () => [] };
+    fs.rmSync(path.join(dir, 'ffmpeg'));
+    fs.writeFileSync(path.join(dir, '1.jpg'), 'old orphan');
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    fs.utimesSync(path.join(dir, '1.jpg'), hourAgo, hourAgo);
+    fs.writeFileSync(path.join(dir, '2.jpg'), 'being created'); // DB 登録前
+
+    await model.fileCleanup();
+
+    assert.deepStrictEqual(fs.readdirSync(dir), ['2.jpg']);
 });

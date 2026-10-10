@@ -343,6 +343,12 @@ export default class ThumbnailManageModel implements IThumbnailManageModel {
                 continue;
             }
 
+            // 生成中でまだ DB に登録されていないサムネイルは削除しない
+            if ((await FileUtil.isRecentlyModified(file)) === true) {
+                this.log.system.info(`skip recently modified file: ${file}`);
+                continue;
+            }
+
             this.log.system.info(`delete thumbnail file: ${file}`);
             await FileUtil.unlink(file).catch(err => {
                 this.log.system.error(`failed to thumbnail file: ${file}`);
