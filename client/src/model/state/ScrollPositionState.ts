@@ -83,7 +83,9 @@ class ScrollPositionState implements IScrollPositionState {
 
         const id = this.getTimestampQuery();
         const newPosition = this.history.findIndex(h => {
-            return h.id === id;
+            // タイムスタンプの無い URL (ブックマーク, 直接入力) どうしは URL も一致する場合のみ同じ履歴とする.
+            // id だけで比較すると, 別ページの保存データを復元してしまう
+            return h.id === id && (id !== null || h.url === location.href);
         });
 
         if (newPosition === -1) {

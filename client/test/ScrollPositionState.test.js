@@ -100,3 +100,32 @@ test('a full session storage does not stop navigation', t => {
     assert.strictEqual(state.isNeedRestoreHistory, true);
     assert.strictEqual(state.getScrollData(), null);
 });
+
+test('a page opened without a timestamp does not get the saved data of another such page', t => {
+    useSession(t, {});
+    const state = new ScrollPositionState();
+
+    global.location.href = 'http://localhost/#/rule';
+    state.updateHistoryPosition();
+    state.saveScrollData({ page: 'rule' });
+    global.location.href = 'http://localhost/#/search';
+    state.updateHistoryPosition();
+
+    assert.strictEqual(state.getScrollData(), null);
+    assert.strictEqual(state.isNeedRestoreHistory, false);
+});
+
+test('reloading a page opened without a timestamp restores its own saved data', t => {
+    const items = {};
+    useSession(t, items);
+    global.location.href = 'http://localhost/#/search';
+    const before = new ScrollPositionState();
+    before.updateHistoryPosition();
+    before.saveScrollData({ page: 'search' });
+
+    const after = new ScrollPositionState();
+    after.updateHistoryPosition();
+
+    assert.deepStrictEqual(after.getScrollData(), { page: 'search' });
+    assert.strictEqual(after.isNeedRestoreHistory, true);
+});
