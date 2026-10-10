@@ -253,8 +253,10 @@ export default class ManualReserve extends Vue {
                         this.manualReserveState.isTimeSpecification = pageInfo.isTimeSpecification;
                         this.manualReserveState.timeSpecifiedOption = cloneDeep(pageInfo.timeSpecifiedOption);
                         // 再読み込み後に sessionStorage から戻した場合は日時が文字列になっている
-                        this.manualReserveState.timeSpecifiedOption.startAt = DateUtil.restoreDate(pageInfo.timeSpecifiedOption.startAt);
-                        this.manualReserveState.timeSpecifiedOption.endAt = DateUtil.restoreDate(pageInfo.timeSpecifiedOption.endAt);
+                        if (typeof pageInfo.timeSpecifiedOption !== 'undefined' && pageInfo.timeSpecifiedOption !== null) {
+                            this.manualReserveState.timeSpecifiedOption.startAt = DateUtil.restoreDate(pageInfo.timeSpecifiedOption.startAt);
+                            this.manualReserveState.timeSpecifiedOption.endAt = DateUtil.restoreDate(pageInfo.timeSpecifiedOption.endAt);
+                        }
                         this.manualReserveState.reserveOption = cloneDeep(pageInfo.reserveOption);
                         this.manualReserveState.saveOption = cloneDeep(pageInfo.saveOption);
                         this.manualReserveState.encodeOption = cloneDeep(pageInfo.encodeOption);

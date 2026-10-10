@@ -381,7 +381,7 @@ export default class Search extends Vue {
                         this.searchState.isTimeSpecification = pageInfo.isTimeSpecification;
                         this.searchState.searchOption = cloneDeep(pageInfo.searchOption);
                         // 再読み込み後に sessionStorage から戻した場合は日時が文字列になっている
-                        if (this.searchState.searchOption !== null) {
+                        if (typeof this.searchState.searchOption !== 'undefined' && this.searchState.searchOption !== null) {
                             this.searchState.searchOption.startPeriod = DateUtil.restoreDate(this.searchState.searchOption.startPeriod);
                             this.searchState.searchOption.endPeriod = DateUtil.restoreDate(this.searchState.searchOption.endPeriod);
                         }
