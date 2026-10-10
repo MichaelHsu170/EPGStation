@@ -794,7 +794,7 @@ components:
                     $ref: '#/components/schemas/ProgramId'
                 timeSpecifiedOption:
                     type: object
-                    description: 時刻指定オプション
+                    description: 時刻指定オプション (endAt は startAt と現在時刻より後であること)
                     required:
                         - name
                         - channelId

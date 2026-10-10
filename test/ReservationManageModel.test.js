@@ -126,3 +126,58 @@ test('later reservation updates do not re-arm manual time-specified reservations
 
     assert.deepStrictEqual(emitted, []);
 });
+
+const H = 60 * 60 * 1000;
+
+test('a manual time reservation whose end is not after its start is refused', async () => {
+    const start = Date.now() + 24 * H;
+    const looked = [];
+    const model = createModel({
+        // a valid time gets past the time check to the duplicate lookup, which reports an existing reservation
+        reserveDB: { findTimeSpecification: async o => (looked.push(o), {}) },
+    });
+    const option = (startAt, endAt) => ({
+        allowEndLack: true,
+        timeSpecifiedOption: { name: 'n', channelId: 1, startAt, endAt },
+    });
+
+    await assert.rejects(model.createManualReserveWithSpecifiedTime(option(start, start)), /TimeSpecifiedOptionError/);
+    await assert.rejects(
+        model.createManualReserveWithSpecifiedTime(option(start + H, start)),
+        /TimeSpecifiedOptionError/,
+    );
+    assert.deepStrictEqual(looked, []);
+
+    await assert.rejects(
+        model.createManualReserveWithSpecifiedTime(option(start, start + 1)),
+        /AddReservationConflictError/,
+    );
+    assert.strictEqual(looked.length, 1);
+});
+
+test('a reservation whose end comes before its start does not drop another one from the conflict check', () => {
+    const model = createModel({ log: { system: { ...silentLog.system, debug: () => {} } } });
+    model.setTuners([{ name: 't0', types: ['GR'] }]);
+    const T0 = Date.UTC(2026, 9, 11, 1);
+    const reserve = r => ({
+        isSkip: false,
+        isOverlap: false,
+        isConflict: false,
+        isTimeSpecified: false,
+        channelType: 'GR',
+        updateTime: 1,
+        ...r,
+    });
+
+    const result = model.createReserves([
+        reserve({ id: 1, ruleId: 1, programId: 101, channel: '23', startAt: T0, endAt: T0 + 2 * H }),
+        // a zero-length program: its end sorts before its start
+        reserve({ id: 2, ruleId: 9, programId: 102, channel: '25', startAt: T0 + H / 2, endAt: T0 + H / 2 }),
+        reserve({ id: 3, ruleId: 2, programId: 103, channel: '24', startAt: T0 + H, endAt: T0 + 1.5 * H }),
+    ]);
+
+    // one tuner: rule 1 (id 1) and rule 2 (id 3) overlap on different channels, and rule 1 has priority
+    const conflicts = Object.fromEntries(result.map(r => [r.id, r.isConflict]));
+    assert.strictEqual(conflicts[1], false);
+    assert.strictEqual(conflicts[3], true);
+});

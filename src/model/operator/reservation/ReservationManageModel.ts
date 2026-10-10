@@ -293,8 +293,11 @@ class ReservationManageModel implements IReservationManageModel {
             throw new Error('NameIsUndefinedError');
         }
 
-        // 時刻チェック
-        if (option.timeSpecifiedOption.endAt <= new Date().getTime()) {
+        // 時刻チェック (終了時刻が開始時刻より後でないと録画できず、競合計算も壊れる)
+        if (
+            option.timeSpecifiedOption.endAt <= new Date().getTime() ||
+            option.timeSpecifiedOption.startAt >= option.timeSpecifiedOption.endAt
+        ) {
             this.log.system.error('timeSpecifiedOption error');
             throw new Error('TimeSpecifiedOptionError');
         }
@@ -1643,7 +1646,10 @@ class ReservationManageModel implements IReservationManageModel {
                 const index = reserves.findIndex(r => {
                     return r.idx === l.idx;
                 });
-                reserves.splice(index, 1);
+                // 見つからない場合に splice(-1) で別の予約を消さない
+                if (index !== -1) {
+                    reserves.splice(index, 1);
+                }
             }
 
             // sort reserves
