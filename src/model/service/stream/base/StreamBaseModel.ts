@@ -184,7 +184,13 @@ abstract class StreamBaseModel<T> implements IStreamBaseModel<T> {
                 }
             }
 
-            if (hasParentPlayList === true && fileCnt >= 2) {
+            if (
+                hasParentPlayList === true &&
+                (fileCnt >= 2 ||
+                    (fileCnt === 1 &&
+                        this.getStreamType() === 'RecordedHLS' &&
+                        (await this.isEndedPlayList(parentPlayListName)) === true))
+            ) {
                 if (hasChildPlayList === true && hasSubtitlePlayList) {
                     // parentPlayList に字幕用のプレイリスト情報を追加する
                     await this.addSubtitleInfoToParentPlaylist(parentPlayListName, subtitlePlayListName).catch(err => {
@@ -202,6 +208,22 @@ abstract class StreamBaseModel<T> implements IStreamBaseModel<T> {
                 this.socketIO.notifyClient();
             }
         }, 100);
+    }
+
+    /**
+     * プレイリストが完結しているか (#EXT-X-ENDLIST を含むか)
+     * 録画の終端付近から再生すると ffmpeg はセグメントを 1 つだけ書いて終了するため、
+     * セグメントが 2 つ揃うのを待つと有効にならない
+     * @param playListName: string プレイリスト名
+     */
+    private async isEndedPlayList(playListName: string): Promise<boolean> {
+        try {
+            const file = await FileUtil.readFile(path.join(this.config.streamFilePath, playListName));
+
+            return file.includes('#EXT-X-ENDLIST');
+        } catch (err: any) {
+            return false;
+        }
     }
 
     /**
