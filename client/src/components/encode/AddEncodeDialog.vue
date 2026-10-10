@@ -14,14 +14,14 @@
                         v-model="addEncodeState.parentDirectory"
                         label="recorded"
                         :menu-props="{ auto: true }"
-                        :disabled="addEncodeState.isSaveSameDirectory === true"
+                        :disabled="setting.tmp.isSaveSameDirectory === true"
                         class="parent"
                     ></v-select>
                     <v-text-field
                         v-model="addEncodeState.directory"
                         label="sub directory"
                         clearable
-                        :disabled="addEncodeState.isSaveSameDirectory === true"
+                        :disabled="setting.tmp.isSaveSameDirectory === true"
                         class="sub"
                     ></v-text-field>
                 </div>
