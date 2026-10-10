@@ -25,5 +25,6 @@ export default interface IEncodeManageModel {
     cancel(encodeId: apid.EncodeId): Promise<void>;
     getRecordedIndex(): EncodeRecordedIdIndex;
     cancelEncodeByRecordedId(recordedId: apid.RecordedId): Promise<void>;
+    cancelEncodeBySourceVideoFileId(videoFileId: apid.VideoFileId): Promise<void>;
     getEncodeInfo(): EncodeQueueInfo;
 }

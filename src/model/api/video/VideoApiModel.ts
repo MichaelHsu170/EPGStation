@@ -6,6 +6,7 @@ import IRecordedDB from '../../db/IRecordedDB';
 import IVideoFileDB from '../../db/IVideoFileDB';
 import IConfiguration from '../../IConfiguration';
 import IIPCClient from '../../ipc/IIPCClient';
+import IEncodeManageModel from '../../service/encode/IEncodeManageModel';
 import IApiUtil from '../IApiUtil';
 import IPlayList from '../IPlayList';
 import IVideoApiModel, { VideoFilePathInfo } from './IVideoApiModel';
@@ -19,6 +20,7 @@ export default class VideoApiModel implements IVideoApiModel {
     private apiUtil: IApiUtil;
     private videoUtil: IVideoUtil;
     private ipc: IIPCClient;
+    private encodeManage: IEncodeManageModel;
 
     constructor(
         @inject('IConfiguration') configuration: IConfiguration,
@@ -27,6 +29,7 @@ export default class VideoApiModel implements IVideoApiModel {
         @inject('IApiUtil') apiUtil: IApiUtil,
         @inject('IVideoUtil') videoUtil: IVideoUtil,
         @inject('IIPCClient') ipc: IIPCClient,
+        @inject('IEncodeManageModel') encodeManage: IEncodeManageModel,
     ) {
         this.configuration = configuration;
         this.videoFileDB = videoFileDB;
@@ -34,6 +37,7 @@ export default class VideoApiModel implements IVideoApiModel {
         this.apiUtil = apiUtil;
         this.videoUtil = videoUtil;
         this.ipc = ipc;
+        this.encodeManage = encodeManage;
     }
 
     /**
@@ -108,6 +112,16 @@ export default class VideoApiModel implements IVideoApiModel {
      * @return Promise<void>
      */
     public async deleteVideoFile(videoFileId: apid.VideoFileId): Promise<void> {
+        // 保護された録画のファイルは削除されないため、エンコードを止める前に確認する
+        const video = await this.videoFileDB.findId(videoFileId);
+        const recorded = video === null ? null : await this.recordedDB.findId(video.recordedId);
+        if (recorded !== null && recorded.isProtected === true) {
+            throw new Error('RecordedIsProtected');
+        }
+
+        // 削除するファイルをソースとするエンコードを止める
+        await this.encodeManage.cancelEncodeBySourceVideoFileId(videoFileId);
+
         await this.ipc.recorded.deleteVideoFile(videoFileId);
     }
 

@@ -344,9 +344,27 @@ class EncodeManageModel implements IEncodeManageModel {
      * @return Promise<void>
      */
     public async cancelEncodeByRecordedId(recordedId: apid.RecordedId): Promise<void> {
+        return this.cancelEncodeBy(option => option.recordedId === recordedId);
+    }
+
+    /**
+     * 指定した videoFileId をソースとするエンコードをキャンセルする
+     * @param videoFileId: apid.VideoFileId
+     * @return Promise<void>
+     */
+    public async cancelEncodeBySourceVideoFileId(videoFileId: apid.VideoFileId): Promise<void> {
+        return this.cancelEncodeBy(option => option.sourceVideoFileId === videoFileId);
+    }
+
+    /**
+     * isTarget が true を返すエンコードをキャンセルする
+     * @param isTarget: (option: EncodeOption) => boolean
+     * @return Promise<void>
+     */
+    private async cancelEncodeBy(isTarget: (option: EncodeOption) => boolean): Promise<void> {
         const encodeIds: apid.EncodeId[] = [];
 
-        // recordedId に該当する encodedId を取り出す
+        // isTarget に該当する encodedId を取り出す
         // wait queue
         for (const item of this.waitQueue) {
             const itemOption = item.getEncodeOption();
@@ -354,7 +372,7 @@ class EncodeManageModel implements IEncodeManageModel {
                 continue;
             }
 
-            if (itemOption.recordedId === recordedId) {
+            if (isTarget(itemOption)) {
                 encodeIds.push(itemOption.encodeId);
             }
         }
@@ -366,7 +384,7 @@ class EncodeManageModel implements IEncodeManageModel {
                 continue;
             }
 
-            if (itemOption.recordedId === recordedId) {
+            if (isTarget(itemOption)) {
                 encodeIds.push(itemOption.encodeId);
             }
         }
