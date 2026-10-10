@@ -90,6 +90,33 @@ namespace ProcessUtil {
     export const isExited = (child: ChildProcess): boolean => {
         return child.exitCode !== null;
     };
+
+    /**
+     * プロセスの終了を待つ
+     * @param child ChildProcess
+     * @param timeout: number 待つ時間 (ms)
+     * @return Promise<boolean> 時間内に終了すれば true (既に終了していれば即座に true)
+     */
+    export const waitExit = (child: ChildProcess, timeout: number): Promise<boolean> => {
+        return new Promise<boolean>((resolve: (isExited: boolean) => void) => {
+            // シグナルで終了したプロセスは exitCode が null のまま signalCode が入る
+            if (child.exitCode !== null || child.signalCode !== null) {
+                resolve(true);
+
+                return;
+            }
+
+            const onExit = () => {
+                clearTimeout(timerId);
+                resolve(true);
+            };
+            const timerId = setTimeout(() => {
+                child.removeListener('exit', onExit);
+                resolve(false);
+            }, timeout);
+            child.once('exit', onExit);
+        });
+    };
 }
 
 export default ProcessUtil;

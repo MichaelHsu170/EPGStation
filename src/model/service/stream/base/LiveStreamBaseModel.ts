@@ -221,6 +221,9 @@ export default abstract class LiveStreamBaseModel
         }
 
         if (this.getStreamType() === 'LiveHLS') {
+            if (this.streamProcess !== null) {
+                await this.waitStreamProcessExit(this.streamProcess);
+            }
             await this.fileDeleter.deleteAllFiles();
         }
     }

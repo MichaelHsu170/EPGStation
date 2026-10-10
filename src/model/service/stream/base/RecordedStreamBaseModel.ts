@@ -271,6 +271,9 @@ export default abstract class RecordedStreamBaseModel
         }
 
         if (this.getStreamType() === 'RecordedHLS') {
+            if (this.streamProcess !== null) {
+                await this.waitStreamProcessExit(this.streamProcess);
+            }
             await this.fileDeleter.deleteAllFiles();
         }
     }

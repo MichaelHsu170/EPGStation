@@ -1,3 +1,4 @@
+import { ChildProcess } from 'child_process';
 import * as events from 'events';
 import * as fs from 'fs';
 import { inject, injectable } from 'inversify';
@@ -5,6 +6,7 @@ import * as path from 'path';
 import internal from 'stream';
 import * as apid from '../../../../../api';
 import FileUtil from '../../../../util/FileUtil';
+import ProcessUtil from '../../../../util/ProcessUtil';
 import IConfigFile from '../../../IConfigFile';
 import IConfiguration from '../../../IConfiguration';
 import ILogger from '../../../ILogger';
@@ -108,6 +110,19 @@ abstract class StreamBaseModel<T> implements IStreamBaseModel<T> {
 
         this.emitExitStream();
         this.emitter.removeAllListeners(StreamBaseModel.EXIT_EVENT);
+    }
+
+    /**
+     * HLS ファイルを削除する前に stream プロセスの終了を待つ
+     * SIGINT を受けた ffmpeg は書き込み中のセグメントと #EXT-X-ENDLIST 付きのプレイリストを書いてから終了する.
+     * 終了前に削除するとそれらが残り, 同じ stream id で次に開始したストリーム (シーク時の再開始) が
+     * 前のストリームのプレイリストで有効になってしまう
+     * @param child: ChildProcess
+     */
+    protected async waitStreamProcessExit(child: ChildProcess): Promise<void> {
+        if ((await ProcessUtil.waitExit(child, StreamBaseModel.PROCESS_EXIT_TIMEOUT)) === false) {
+            this.log.stream.warn(`stream process did not exit in ${StreamBaseModel.PROCESS_EXIT_TIMEOUT} ms`);
+        }
     }
 
     public abstract getStream(): internal.Readable;
@@ -287,6 +302,9 @@ abstract class StreamBaseModel<T> implements IStreamBaseModel<T> {
 namespace StreamBaseModel {
     export const ENCODE_PROCESS_PRIORITY = 1;
     export const EXIT_EVENT = 'exitEvent';
+    // SIGINT から ffmpeg の終了までは通常 0.1 - 1.8 秒 (実測) だが, 高負荷時には 5 秒を超えた.
+    // 待つのは終了が遅いときだけなので余裕を持たせる (超えたら従来どおりそのまま削除する)
+    export const PROCESS_EXIT_TIMEOUT = 10 * 1000;
 }
 
 export default StreamBaseModel;
