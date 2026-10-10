@@ -246,3 +246,75 @@ test('update rule: the targets stored in an edited rule are sent unchanged', () 
         times: [{ week: 0x7f, start: 6, range: 3 }],
     });
 });
+
+// the search page with a fresh form; requests records every search sent to the server
+const createSearchPage = () => {
+    const requests = [];
+    const state = new SearchState(
+        {},
+        { getConfig: () => null },
+        {
+            getScheduleSearch: async option => {
+                requests.push(option);
+
+                return [];
+            },
+        },
+        {},
+        {},
+        {},
+        {},
+        { close: () => {} },
+        { getSavedValue: () => ({ isHalfWidthDisplayed: true, searchLength: 300 }) },
+    );
+    state.clear();
+
+    return { state, requests };
+};
+
+// what 検索 sends for the keyword ニュース typed into a fresh form (the targets are off until the search turns on 番組名 and 概要)
+const newsSearch = {
+    option: { keyword: 'ニュース', keyCS: false, keyRegExp: false, name: true, description: true, extended: false, times: [{ week: 0x7f }] },
+    isHalfWidth: true,
+    limit: 300,
+};
+
+test('search results: a refresh before any search sends nothing, not the form with every target off', async () => {
+    const { state, requests } = createSearchPage();
+    state.searchOption.keyword = 'ニュース';
+
+    await state.fetchSearchResult();
+
+    assert.deepStrictEqual(requests, []);
+    assert.strictEqual(state.getSearchResult(), null);
+});
+
+test('search results: a refresh re-runs the last search, not the form as it was edited since', async () => {
+    const { state, requests } = createSearchPage();
+    state.searchOption.keyword = 'ニュース';
+    state.prepSearch();
+    await state.fetchSearchResult();
+
+    state.searchOption.keyword = 'ドラマ';
+    state.searchOption.keywordOption.extended = true;
+    state.searchOption.week.sun = false;
+    await state.fetchSearchResult();
+
+    assert.deepStrictEqual(requests, [newsSearch, newsSearch]);
+    assert.deepStrictEqual(state.getSearchResult(), []);
+});
+
+test('search results: a refresh after the form is cleared or the page is opened again sends nothing', async () => {
+    for (const reset of [state => state.clear(), state => state.init()]) {
+        const { state, requests } = createSearchPage();
+        state.searchOption.keyword = 'ニュース';
+        state.prepSearch();
+        await state.fetchSearchResult();
+
+        await reset(state);
+        await state.fetchSearchResult();
+
+        assert.deepStrictEqual(requests, [newsSearch]);
+        assert.strictEqual(state.getSearchResult(), null);
+    }
+});

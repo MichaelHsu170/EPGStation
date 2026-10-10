@@ -62,6 +62,7 @@ export default class SearchState implements ISearchState {
     private ruleId: apid.RuleId | null = null;
 
     private searchResult: SearchResultItem[] | null = null;
+    private searchedOption: SearchOption | null = null; // 最後に検索した条件 (検索結果の更新はこの条件で行う)
     private searchSeq: number = 0; // 古い検索結果で新しい検索結果を上書きしないための番号
     private reservesResult: apid.ReserveItem[] | null = null;
 
@@ -146,6 +147,7 @@ export default class SearchState implements ISearchState {
         // 検索結果クリア
         this.searchSeq++;
         this.searchResult = null;
+        this.searchedOption = null;
         this.reservesResult = null;
 
         if (this.ruleId !== null) {
@@ -595,6 +597,7 @@ export default class SearchState implements ISearchState {
         this.initTimeReserveOption();
         this.searchSeq++;
         this.searchResult = null;
+        this.searchedOption = null;
     }
 
     /**
@@ -721,6 +724,7 @@ export default class SearchState implements ISearchState {
     public prepSearch(): void {
         // 検索オプション準備
         this.prepSearchOption();
+        this.searchedOption = cloneDeep(this.searchOption);
 
         // ディレクトリの自動設定
         if (this.settingModel.getSavedValue().isEnableCopyKeywordToDirectory === true) {
@@ -861,16 +865,17 @@ export default class SearchState implements ISearchState {
     }
 
     /**
-     * 番組を検索し結果を取得する
+     * 最後に prepSearch した条件で番組を検索し結果を取得する
      * @return Promise<void>
      */
     public async fetchSearchResult(): Promise<void> {
-        if (this.searchOption === null) {
-            throw new Error('searchOption is null');
+        // まだ検索していない場合は何もしない
+        if (this.searchedOption === null) {
+            return;
         }
 
         const seq = ++this.searchSeq;
-        const scheduleSearchOption = this.createScheduleSearchOption(this.searchOption);
+        const scheduleSearchOption = this.createScheduleSearchOption(this.searchedOption);
         const newResult = await this.scheduleApiModel.getScheduleSearch(scheduleSearchOption);
         const reserveIndex = await this.getReserveIndex(newResult);
         // 後から開始した検索 (またはクリア) があれば古い結果は捨てる
