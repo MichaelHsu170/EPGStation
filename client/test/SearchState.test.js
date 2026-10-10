@@ -150,4 +150,99 @@ test('time specified rule: the program name is sent', () => {
 test('time specified rule: a program name that was cleared or deleted with the keyboard is an input error', () => {
     assert.throws(() => createTimeSpecificationRuleSearchOption(timeReserveOption(null)), { message: 'TimeReserveOptionIsInvalidValue' });
     assert.throws(() => createTimeSpecificationRuleSearchOption(timeReserveOption('')), { message: 'TimeReserveOptionIsInvalidValue' });
+    assert.throws(() => createTimeSpecificationRuleSearchOption(timeReserveOption('  ')), { message: 'TimeReserveOptionIsInvalidValue' });
+    assert.throws(() => createTimeSpecificationRuleSearchOption(timeReserveOption('\u3000')), { message: 'TimeReserveOptionIsInvalidValue' });
+});
+
+test("search option: a start or range cleared with the select's clear icon (null) removes the time range", () => {
+    for (const [startTime, rangeTime] of [
+        [null, null],
+        [6, null],
+        [null, 3],
+        [6, undefined],
+    ]) {
+        const searchOption = prepSearchOption({ ...createOption(), startTime, rangeTime });
+
+        assert.deepStrictEqual([searchOption.startTime, searchOption.rangeTime], [undefined, undefined], `start ${startTime}, range ${rangeTime}`);
+    }
+});
+
+test('search option: a start and range that are both set are kept', () => {
+    const searchOption = prepSearchOption({ ...createOption(), startTime: 0, rangeTime: 3 });
+
+    assert.deepStrictEqual([searchOption.startTime, searchOption.rangeTime], [0, 3]);
+});
+
+test('search rule: the time range is sent only when start and range are both numbers', () => {
+    assert.deepStrictEqual(createRuleSearchOption({ ...createOption(), startTime: 6, rangeTime: 3 }).times, [{ week: 0x7f, start: 6, range: 3 }]);
+    assert.deepStrictEqual(createRuleSearchOption({ ...createOption(), startTime: 0, rangeTime: 1 }).times, [{ week: 0x7f, start: 0, range: 1 }]);
+    assert.deepStrictEqual(createRuleSearchOption({ ...createOption(), startTime: null, rangeTime: null }).times, [{ week: 0x7f }]);
+    assert.deepStrictEqual(createRuleSearchOption({ ...createOption(), startTime: 6, rangeTime: null }).times, [{ week: 0x7f }]);
+    assert.deepStrictEqual(createRuleSearchOption({ ...createOption(), startTime: null, rangeTime: 3 }).times, [{ week: 0x7f }]);
+});
+
+// the rule as 追加 / 更新 sends it, from the form as it is when the button is clicked
+const createAddRuleOption = searchOption => {
+    const state = Object.create(SearchState.prototype);
+    Object.assign(state, {
+        isTimeSpecification: false,
+        searchOption,
+        reserveOption: reserveOption(null),
+        saveOption: null,
+        encodeOption: null,
+    });
+
+    return state.createAddRuleOption().searchOption;
+};
+
+test('add / update rule: an ignore keyword typed after the last search gets name and description, as a search gives it', () => {
+    const sent = createAddRuleOption({
+        ...createOption(),
+        keywordOption: { keyCS: false, keyRegExp: false, name: true, description: true, extended: false },
+        ignoreKeyword: '再放送',
+        ignoreKeywordOption: { keyCS: false, keyRegExp: false, name: false, description: false, extended: false },
+    });
+
+    assert.deepStrictEqual(
+        [sent.ignoreKeyword, sent.ignoreKeyCS, sent.ignoreKeyRegExp, sent.ignoreName, sent.ignoreDescription, sent.ignoreExtended],
+        ['再放送', false, false, true, true, false],
+    );
+});
+
+test('add / update rule: a keyword typed after a search without one gets name and description', () => {
+    const sent = createAddRuleOption({
+        ...createOption(),
+        keyword: 'ニュース',
+        keywordOption: { keyCS: false, keyRegExp: false, name: false, description: false, extended: false },
+    });
+
+    assert.deepStrictEqual([sent.keyword, sent.keyCS, sent.keyRegExp, sent.name, sent.description, sent.extended], ['ニュース', false, false, true, true, false]);
+});
+
+test('update rule: the targets stored in an edited rule are sent unchanged', () => {
+    const sent = createAddRuleOption({
+        ...createOption(),
+        keyword: 'ニュース',
+        keywordOption: { keyCS: true, keyRegExp: false, name: false, description: false, extended: true },
+        ignoreKeyword: '再放送',
+        ignoreKeywordOption: { keyCS: false, keyRegExp: true, name: false, description: true, extended: false },
+        startTime: 6,
+        rangeTime: 3,
+    });
+
+    assert.deepStrictEqual(sent, {
+        keyword: 'ニュース',
+        keyCS: true,
+        keyRegExp: false,
+        name: false,
+        description: false,
+        extended: true,
+        ignoreKeyword: '再放送',
+        ignoreKeyCS: false,
+        ignoreKeyRegExp: true,
+        ignoreName: false,
+        ignoreDescription: true,
+        ignoreExtended: false,
+        times: [{ week: 0x7f, start: 6, range: 3 }],
+    });
 });

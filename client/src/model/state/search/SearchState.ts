@@ -789,7 +789,8 @@ export default class SearchState implements ISearchState {
         }
 
         // time range
-        if (typeof this.searchOption.startTime === 'undefined' || typeof this.searchOption.rangeTime === 'undefined') {
+        // v-select の × で消した値は null になるので, 数値以外は未入力として扱う
+        if (typeof this.searchOption.startTime !== 'number' || typeof this.searchOption.rangeTime !== 'number') {
             this.searchOption.startTime = undefined;
             this.searchOption.rangeTime = undefined;
         }
@@ -1042,7 +1043,7 @@ export default class SearchState implements ISearchState {
                 week: this.convertWeekToRuleWeek(option.week),
             },
         ];
-        if (typeof option.startTime !== 'undefined' && typeof option.rangeTime !== 'undefined') {
+        if (typeof option.startTime === 'number' && typeof option.rangeTime === 'number') {
             ruleOption.times[0].start = option.startTime;
             ruleOption.times[0].range = option.rangeTime;
         }
@@ -1240,6 +1241,9 @@ export default class SearchState implements ISearchState {
                 throw new Error('ReserveOptionIsNull');
             }
 
+            // 最後の検索後に入力されたキーワード等も検索時と同じように補正してから送る
+            this.prepSearchOption();
+
             rule = {
                 isTimeSpecification: false,
                 searchOption: this.createRuleSearchOption(this.searchOption),
@@ -1277,8 +1281,8 @@ export default class SearchState implements ISearchState {
      * @return apid.RuleSearchOption
      */
     private createTimeSpecificationRuleSearchOption(option: TimeReserveOption): apid.RuleSearchOption {
-        // キーボードで消した番組名は '' になるので未入力として扱う
-        if (option.keyword === null || option.keyword.length === 0 || typeof option.channel === 'undefined' || option.startTime === null || option.endTime === null) {
+        // キーボードで消した番組名 ('') や空白だけの番組名は未入力として扱う
+        if (option.keyword === null || option.keyword.trim().length === 0 || typeof option.channel === 'undefined' || option.startTime === null || option.endTime === null) {
             throw new Error('TimeReserveOptionIsInvalidValue');
         }
 
