@@ -544,7 +544,7 @@ export default class VideoContainer extends Vue {
         }
 
         this.updateLastSeekTime();
-        (this.$refs.video as BaseVideo).setCurrentTime(time);
+        (this.$refs.video as BaseVideo).setCurrentTime(time > this.duration ? this.duration : time);
 
         // 内部の字幕表示状態と実際の状態を強制的に合わせる
         this.forceUpdateSubtitle();
