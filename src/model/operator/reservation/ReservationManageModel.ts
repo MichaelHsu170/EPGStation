@@ -1529,8 +1529,9 @@ class ReservationManageModel implements IReservationManageModel {
 
     /**
      * 現在時刻より古い予約を削除する
+     * @param hasRecording: 予約に録画処理が残っているか. 残っている予約 (起動時に録画を再開した終了時刻未定の番組) は削除しない
      */
-    public async cleanup(): Promise<void> {
+    public async cleanup(hasRecording: (reserveId: apid.ReserveId) => boolean): Promise<void> {
         // 実行権取得
         const exeId = await this.executeManagementModel.getExecution(ReservationManageModel.EDIT_RESERVE_PRIORITY);
         const finalize = () => {
@@ -1540,11 +1541,12 @@ class ReservationManageModel implements IReservationManageModel {
         this.log.system.info('start reserves cleanup');
 
         // 古い予約を取得する
-        const deleteReserves = await this.reserveDB.findOldTime(new Date().getTime()).catch(err => {
+        const oldReserves = await this.reserveDB.findOldTime(new Date().getTime()).catch(err => {
             finalize();
             this.log.system.error('get delete old reservation error');
             throw err;
         });
+        const deleteReserves = oldReserves.filter(reserve => hasRecording(reserve.id) === false);
 
         // 削除
         await this.reserveDB

@@ -181,3 +181,25 @@ test('a reservation whose end comes before its start does not drop another one f
     assert.strictEqual(conflicts[1], false);
     assert.strictEqual(conflicts[3], true);
 });
+
+test('startup cleanup deletes the reservations that are over, except one whose recording was resumed', async () => {
+    const deleted = [];
+    const emitted = [];
+    const old = [
+        { id: 6, programId: 40010101444, startAt: 1000, endAt: 1001 }, // resumed: its duration is undetermined
+        { id: 7, programId: 40010101445, startAt: 1000, endAt: 2000 },
+    ];
+    const model = createModel({
+        reserveDB: {
+            findOldTime: async () => old,
+            updateMany: async values => deleted.push(...values.delete.map(r => r.id)),
+        },
+        reserveEvent: { emitUpdated: values => emitted.push(...values.delete.map(r => r.id)) },
+    });
+
+    await model.cleanup(reserveId => reserveId === 6);
+
+    assert.deepStrictEqual(deleted, [7]);
+    assert.deepStrictEqual(emitted, [7]);
+    await assertLockReleased(model);
+});

@@ -498,3 +498,224 @@ test('a connection error from the database, after the stream was opened, keeps t
     assert.strictEqual(attempts, 4);
     assert.deepStrictEqual(failed, [7]);
 });
+
+// Mirakurun gives a program whose duration is undetermined (an overrun) as duration 1 ms, so its program id
+// reservation has endAt = startAt + 1 (S14 review: NHK BS 101, event 1444, on 2026-10-11)
+const HOUR = 60 * 60 * 1000;
+const overrunReserve = (fields = {}) => ({ id: 6, programId: 40010101444, isSkip: false, isOverlap: false, startAt: -3 * HOUR, endAt: -3 * HOUR + 1, ...fields });
+
+test('a reservation of a program whose duration became undetermined is still armed and prepared at once', t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    const model = Object.create(RecorderModel.prototype);
+    model.log = silentLog;
+    model.timerId = null;
+    let prepared = 0;
+    model.prepRecord = () => {
+        prepared++;
+    };
+
+    assert.strictEqual(model.setTimer(overrunReserve(), true), true);
+    t.mock.timers.tick(0);
+    assert.strictEqual(prepared, 1);
+
+    // an ended program, and a 1 ms time-specified reservation, are not on air
+    assert.strictEqual(model.setTimer(overrunReserve({ endAt: -1 }), true), false);
+    assert.strictEqual(model.setTimer(overrunReserve({ programId: null }), true), false);
+});
+
+test('while Mirakurun is unreachable, preparation of a program whose duration is undetermined keeps retrying', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    const attempts = [];
+    const { model, failed } = createPrepModel(overrunReserve(), async () => {
+        attempts.push(Date.now());
+        if (Date.now() < 25 * 1000) {
+            throw connectionError('ECONNREFUSED');
+        }
+
+        return new PassThrough();
+    });
+    model.programDB = { findId: async id => ({ id }) };
+    let recording = 0;
+    model.doRecord = async () => {
+        recording++;
+    };
+
+    await model.prepRecord();
+    for (let i = 0; i < 5; i++) {
+        t.mock.timers.tick(5 * 1000);
+        await flushIO();
+    }
+
+    assert.deepStrictEqual(attempts, [0, 5000, 10000, 15000, 20000, 25000]);
+    assert.strictEqual(recording, 1);
+    assert.deepStrictEqual(failed, []);
+});
+
+/**
+ * A recorder (made by its constructor, so its fields have their initial values) that is recording reserve.
+ * The fake Mirakurun gives the program with a relay item to 102/3193 (as it did for 1444), which the program DB knows.
+ */
+const createRecordingModel = (reserve, { findRelayError = null } = {}) => {
+    const checks = [];
+    const relays = [];
+    const recordingFailed = [];
+    const log = { system: { ...silentLog.system, debug: () => {} } };
+    const model = new RecorderModel(
+        { getLogger: () => log },
+        { getConfig: () => ({}) },
+        {
+            findEventRelayProgram: async (networkId, serviceId, eventId) => {
+                if (findRelayError !== null) {
+                    throw findRelayError;
+                }
+
+                return { id: networkId * 10000000000 + serviceId * 100000 + eventId };
+            },
+        },
+        {},
+        { removeRecording: async () => {}, findId: async id => ({ id }), updateOnce: async () => {} },
+        {},
+        {},
+        {},
+        {},
+        { stop: async () => {} },
+        {},
+        {
+            emitEventRelay: programs => relays.push(programs.map(p => p.programId)),
+            emitFinishRecording: () => {},
+            emitRecordingFailed: r => recordingFailed.push(r.id),
+        },
+        {
+            getClient: () => ({
+                getProgram: async programId => {
+                    checks.push(Date.now());
+
+                    return { id: programId, networkId: 4, relatedItems: [{ type: 'relay', serviceId: 102, eventId: 3193 }] };
+                },
+            }),
+        },
+    );
+    // the state doRecord leaves: recording into recorded 9, its stream watched, the relay check armed
+    model.reserve = reserve;
+    model.isRecording = true;
+    model.recordedId = 9;
+    model.createRecorded = async () => ({ id: 9 });
+    const stream = new PassThrough();
+    stream.resume();
+    model.stream = stream;
+    model.setEndProcess(stream);
+    model.setEventRelayTimer(reserve);
+
+    return { model, stream, checks, relays, recordingFailed };
+};
+
+test('a recording whose duration becomes undetermined checks the event relay when its stream ends, not at once', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    const reserve = overrunReserve({ endAt: 10 * 60 * 1000 }); // planned end in 10 min
+    const { model, stream, checks, relays } = createRecordingModel(reserve);
+
+    t.mock.timers.tick(60 * 1000);
+    await model.update({ ...reserve, endAt: reserve.startAt + 1 }, true);
+    await flushIO();
+    t.mock.timers.tick(60 * 60 * 1000); // past the planned end: the overrun goes on
+    await flushIO();
+    assert.deepStrictEqual(checks, []);
+
+    stream.end(); // Mirakurun closes the program stream when the event leaves EIT p/f
+    await flushIO();
+
+    assert.deepStrictEqual(checks, [61 * 60 * 1000]);
+    assert.deepStrictEqual(relays, [[40010203193]]);
+});
+
+test('a recording whose duration is undetermined, then known again, checks the event relay 20 s before the new end only', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    const reserve = overrunReserve({ endAt: 10 * 60 * 1000 });
+    const { model, stream, checks, relays } = createRecordingModel(reserve);
+
+    t.mock.timers.tick(60 * 1000);
+    await model.update({ ...reserve, endAt: reserve.startAt + 1 }, true);
+    t.mock.timers.tick(60 * 1000);
+    await model.update({ ...reserve, endAt: 30 * 60 * 1000 }, true); // the broadcaster gives the real end
+    t.mock.timers.tick(30 * 60 * 1000 - 20 * 1000 - 2 * 60 * 1000);
+    await flushIO();
+    assert.deepStrictEqual(checks, [30 * 60 * 1000 - 20 * 1000]);
+
+    t.mock.timers.tick(20 * 1000);
+    stream.end();
+    await flushIO();
+
+    assert.deepStrictEqual(checks, [30 * 60 * 1000 - 20 * 1000]);
+    assert.deepStrictEqual(relays, [[40010203193]]);
+});
+
+test('a recording with a known end checks the event relay once, 20 s before its end', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    const { stream, checks } = createRecordingModel(overrunReserve({ endAt: 10 * 60 * 1000 }));
+
+    t.mock.timers.tick(10 * 60 * 1000 - 20 * 1000);
+    await flushIO();
+    t.mock.timers.tick(20 * 1000);
+    stream.end();
+    await flushIO();
+
+    assert.deepStrictEqual(checks, [10 * 60 * 1000 - 20 * 1000]);
+});
+
+test('a recording whose duration becomes undetermined after the relay check checks it again when its stream ends', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    const reserve = overrunReserve({ endAt: 10 * 60 * 1000 });
+    const { model, stream, checks, relays } = createRecordingModel(reserve);
+
+    t.mock.timers.tick(10 * 60 * 1000 - 20 * 1000);
+    await flushIO();
+    t.mock.timers.tick(5 * 60 * 1000); // the game overruns; the relay target is decided later
+    await model.update({ ...reserve, endAt: reserve.startAt + 1 }, true);
+    t.mock.timers.tick(60 * 60 * 1000);
+    stream.end();
+    await flushIO();
+
+    assert.deepStrictEqual(checks, [10 * 60 * 1000 - 20 * 1000, 75 * 60 * 1000 - 20 * 1000]);
+    // both checks ask for 102/3193: ReservationManageModel.addEventRelay reserves it once
+    assert.deepStrictEqual(relays, [[40010203193], [40010203193]]);
+});
+
+test('a recording whose program ends before the relay check time checks the event relay when its stream ends', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    const { stream, checks } = createRecordingModel(overrunReserve({ endAt: 10 * 60 * 1000 }));
+
+    t.mock.timers.tick(5 * 60 * 1000); // the event ends early
+    stream.end();
+    await flushIO();
+    t.mock.timers.tick(10 * 60 * 1000);
+    await flushIO();
+
+    assert.deepStrictEqual(checks, [5 * 60 * 1000]);
+});
+
+test('a recording cancelled while its duration is undetermined does not check the event relay', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    const { model, checks, recordingFailed } = createRecordingModel(overrunReserve());
+
+    t.mock.timers.tick(60 * 1000);
+    await model.cancel(false);
+    await flushIO();
+
+    assert.deepStrictEqual(recordingFailed, [6]); // the stream closed by the cancel ends through recFailed
+    assert.deepStrictEqual(checks, []);
+});
+
+test('an event relay check at the end of a stream whose program lookup fails is logged, not left unhandled', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    const unhandled = [];
+    const onUnhandled = err => unhandled.push(err);
+    process.on('unhandledRejection', onUnhandled);
+    t.after(() => process.off('unhandledRejection', onUnhandled));
+    const { stream, checks } = createRecordingModel(overrunReserve(), { findRelayError: new Error('db down') });
+
+    stream.end();
+    await flushIO();
+
+    assert.deepStrictEqual(checks, [0]);
+    assert.deepStrictEqual(unhandled, []);
+});

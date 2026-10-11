@@ -151,7 +151,8 @@ const cleanup = async () => {
     const recordingManager = container.get<IRecordingManageModel>('IRecordingManageModel');
 
     await recordingManager.cleanup();
-    await reservationManageModel.cleanup();
+    // 録画を再開した予約は終了時刻を過ぎていても (終了時刻未定の番組) 削除しない
+    await reservationManageModel.cleanup(reserveId => recordingManager.hasReserve(reserveId));
 };
 
 /**

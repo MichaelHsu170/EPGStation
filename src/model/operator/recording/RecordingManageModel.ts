@@ -9,7 +9,7 @@ import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
-import IRecorderModel, { RecorderModelProvider } from './IRecorderModel';
+import IRecorderModel, { isReserveOnAir, RecorderModelProvider } from './IRecorderModel';
 import IRecordingManageModel from './IRecordingManageModel';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
 import IRecordingUtilModel from './IRecordingUtilModel';
@@ -177,8 +177,8 @@ class RecordingManageModel implements IRecordingManageModel {
                 }
             }
 
-            // 番組がまだ放送中なら予約は削除せずに残す
-            const isOnAir = reserve.endAt > new Date().getTime();
+            // 番組がまだ放送中 (終了時刻未定を含む) なら予約は削除せずに残す
+            const isOnAir = isReserveOnAir(reserve, new Date().getTime());
 
             // 終了処理
             const newRecorded = await this.recordedDB.findId(r.id);

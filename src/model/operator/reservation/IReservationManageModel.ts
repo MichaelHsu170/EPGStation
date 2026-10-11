@@ -14,5 +14,5 @@ export default interface IReservationManageModel {
     removeSkip(reserveId: apid.ReserveId): Promise<void>;
     removeOverlap(reserveId: apid.ReserveId): Promise<void>;
     edit(reserveId: apid.ReserveId, option: apid.EditManualReserveOption): Promise<void>;
-    cleanup(): Promise<void>;
+    cleanup(hasRecording: (reserveId: apid.ReserveId) => boolean): Promise<void>;
 }

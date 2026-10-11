@@ -26,7 +26,7 @@ import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IMirakurunClientModel from '../../IMirakurunClientModel';
 import IDropCheckerModel from './IDropCheckerModel';
-import IRecorderModel from './IRecorderModel';
+import IRecorderModel, { isReserveOnAir, isUndeterminedEnd } from './IRecorderModel';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
 import IRecordingUtilModel, { RecFilePathInfo } from './IRecordingUtilModel';
 
@@ -70,6 +70,8 @@ class RecorderModel implements IRecorderModel {
 
     // イベントリレータイマー
     private eventRelayTimerId: NodeJS.Timeout | null = null;
+    // 予定の時刻にイベントリレーを確認したか (未確認なら番組ストリームの終了時に確認する)
+    private isEventRelayChecked: boolean = false;
 
     constructor(
         @inject('ILoggerModel') logger: ILoggerModel,
@@ -117,7 +119,7 @@ class RecorderModel implements IRecorderModel {
         }
 
         const now = new Date().getTime();
-        if (now >= this.reserve.endAt) {
+        if (isReserveOnAir(this.reserve, now) === false) {
             return false;
         }
 
@@ -224,7 +226,7 @@ class RecorderModel implements IRecorderModel {
             const isRetryUntilEnd =
                 isGettingStream === true &&
                 RecorderModel.CONNECTION_ERROR_CODES.includes(err?.code) &&
-                new Date().getTime() < this.reserve.endAt;
+                isReserveOnAir(this.reserve, new Date().getTime());
             if (isRetryUntilEnd === true) {
                 this.log.system.warn(
                     `preprec failed, Mirakurun is unreachable. retry in 5 s: ${this.reserve.id} (${err.message})`,
@@ -667,6 +669,15 @@ class RecorderModel implements IRecorderModel {
             clearTimeout(this.eventRelayTimerId);
         }
 
+        // 番組の終了でストリームが閉じたのに予定の時刻に確認していなければ (終了時刻が未定だった場合など) ここで確認する
+        // (キャンセルやエラーで閉じた場合は recFailed により isNeedDeleteReservation が false)
+        if (this.isEventRelayChecked === false && this.isNeedDeleteReservation === true) {
+            this.checkEventRelay().catch(err => {
+                this.log.system.error(`check event relay error: ${this.reserve.id}`);
+                this.log.system.error(err);
+            });
+        }
+
         // 削除予定か?
         if (this.isPlanToDelete === true) {
             this.log.system.info(`plan to delete reserveId: ${this.reserve.id} recordedId: ${this.recordedId}`);
@@ -988,6 +999,16 @@ class RecorderModel implements IRecorderModel {
             return;
         }
 
+        // 終了時刻が未定の間はタイマーをセットせず (セット済みのものは止める)、番組ストリームの終了時に確認する
+        this.isEventRelayChecked = false;
+        if (isUndeterminedEnd(reserve) === true) {
+            if (this.eventRelayTimerId !== null) {
+                clearTimeout(this.eventRelayTimerId);
+            }
+
+            return;
+        }
+
         // 待機時間を計算
         const now = new Date().getTime();
         let time = reserve.endAt - RecorderModel.EVENT_RELAY_CHECK_TIME - now;
@@ -1000,6 +1021,7 @@ class RecorderModel implements IRecorderModel {
             clearTimeout(this.eventRelayTimerId);
         }
         this.eventRelayTimerId = setTimeout(async () => {
+            this.isEventRelayChecked = true;
             await this.checkEventRelay();
         }, time);
     }
