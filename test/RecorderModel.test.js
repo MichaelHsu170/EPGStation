@@ -251,7 +251,7 @@ test('a reservation whose program is missing at preparation is retried, then rep
     const model = Object.create(RecorderModel.prototype);
     Object.assign(model, {
         log: silentLog,
-        reserve: { id: 1, programId: 5 },
+        reserve: { id: 1, programId: 5, startAt: 0, endAt: 30 * 60 * 1000 },
         isStopPrepRec: false,
         stream: null,
         recFile: null,
@@ -535,6 +535,36 @@ test('while Mirakurun is unreachable, preparation of a program whose duration is
         return new PassThrough();
     });
     model.programDB = { findId: async id => ({ id }) };
+    let recording = 0;
+    model.doRecord = async () => {
+        recording++;
+    };
+
+    await model.prepRecord();
+    for (let i = 0; i < 5; i++) {
+        t.mock.timers.tick(5 * 1000);
+        await flushIO();
+    }
+
+    assert.deepStrictEqual(attempts, [0, 5000, 10000, 15000, 20000, 25000]);
+    assert.strictEqual(recording, 1);
+    assert.deepStrictEqual(failed, []);
+});
+
+// the old-program cleanup deletes a program row whose endAt has passed, so the 1 ms row of an overrun is gone after
+// at most 10 min, and Mirakurun sends it again only when the program changes (S15 review)
+test('a program whose duration is undetermined and whose row the cleanup deleted keeps retrying while Mirakurun is unreachable, then records', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    const attempts = [];
+    const { model, failed } = createPrepModel(overrunReserve(), async () => {
+        attempts.push(Date.now());
+        if (Date.now() < 25 * 1000) {
+            throw connectionError('ECONNREFUSED');
+        }
+
+        return new PassThrough();
+    });
+    model.programDB = { findId: async () => null };
     let recording = 0;
     model.doRecord = async () => {
         recording++;

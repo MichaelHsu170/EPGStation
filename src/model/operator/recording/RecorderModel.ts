@@ -190,7 +190,9 @@ class RecorderModel implements IRecorderModel {
         try {
             // 番組開始時刻が変更されたことに伴い番組間に重なりが生じ、当該番組が削除されている
             // NOTE: mirakurunの不具合に対処
-            if (this.reserve.programId) {
+            // 終了時刻未定の番組の行は古い番組の削除で消え、番組が変わるまで戻らないため確認しない
+            // (ストリームは番組 id で Mirakurun に要求する)
+            if (this.reserve.programId && isUndeterminedEnd(this.reserve) === false) {
                 const program = await this.programDB.findId(this.reserve.programId);
                 if (program === null) {
                     this.log.system.warn(
