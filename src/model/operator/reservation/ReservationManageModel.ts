@@ -18,6 +18,7 @@ import IExecutionManagementModel from '../../IExecutionManagementModel';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
 import IReserveOptionChecker from '../IReserveOptionChecker';
+import IRecordingManageModel from '../recording/IRecordingManageModel';
 import IReservationManageModel from './IReservationManageModel';
 import Tuner from './Tuner';
 
@@ -37,6 +38,7 @@ class ReservationManageModel implements IReservationManageModel {
     private programDB: IProgramDB;
     private ruleDB: IRuleDB;
     private reserveEvent: IReserveEvent;
+    private recordingManageModel: IRecordingManageModel;
     private tuners: Tuner[] = [];
     private broadcastStatus: apid.BroadcastStatus = {
         GR: false,
@@ -55,6 +57,7 @@ class ReservationManageModel implements IReservationManageModel {
         @inject('IProgramDB') programDB: IProgramDB,
         @inject('IRuleDB') ruleDB: IRuleDB,
         @inject('IReserveEvent') reserveEvent: IReserveEvent,
+        @inject('IRecordingManageModel') recordingManageModel: IRecordingManageModel,
     ) {
         this.log = logger.getLogger();
         this.config = configuration.getConfig();
@@ -65,6 +68,7 @@ class ReservationManageModel implements IReservationManageModel {
         this.programDB = programDB;
         this.ruleDB = ruleDB;
         this.reserveEvent = reserveEvent;
+        this.recordingManageModel = recordingManageModel;
     }
 
     /**
@@ -872,6 +876,32 @@ class ReservationManageModel implements IReservationManageModel {
                         startAt: program.startAt,
                         endAt: program.endAt,
                     });
+                }
+            }
+
+            if (rule.isTimeSpecification === false) {
+                // 録画中の番組が延長で終了時刻未定 (duration 1 ms) になると番組は終了済みとして検索から外れ、
+                // その行も古い番組の削除で消える。手動予約と同じく実際の終了まで録画を続けるため、
+                // 番組の行が無いか終了時刻未定である録画中の予約は削除しない
+                // (実際の終了時刻が届くと検索に戻り、この予約が更新される)
+                const now = new Date().getTime();
+                for (const old of oldRuleReserves) {
+                    if (
+                        old.programId === null ||
+                        old.startAt > now ||
+                        this.recordingManageModel.hasReserve(old.id) === false ||
+                        newRulePrograms.some(p => p.id === old.programId)
+                    ) {
+                        continue;
+                    }
+                    const program = await this.programDB.findId(old.programId).catch(err => {
+                        finalize();
+                        this.log.system.error(`find program error: ${old.programId}`);
+                        throw err;
+                    });
+                    if (program === null || program.duration === 1) {
+                        newRuleReserves.push(old);
+                    }
                 }
             }
         }
