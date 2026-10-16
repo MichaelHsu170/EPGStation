@@ -317,3 +317,222 @@ test('when the real end of the overrun arrives, the same rule reservation takes 
         [[1, realEnd]],
     );
 });
+
+/**
+ * Runs the test in Japan time (as the live container, TZ=Asia/Tokyo) with the clock at `iso`.
+ */
+const inJapanAt = (t, iso) => {
+    const tz = process.env.TZ;
+    process.env.TZ = 'Asia/Tokyo';
+    t.after(() => {
+        if (typeof tz === 'undefined') {
+            delete process.env.TZ;
+        } else {
+            process.env.TZ = tz;
+        }
+    });
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse(iso) });
+};
+
+/**
+ * Time-specified rule 1: Fridays 23:00 for 2 hours on channel 1, with its reservations in a store that the update
+ * changes. `slots` are the start times (Japan time) of the reservations already stored.
+ */
+const timeRuleModel = (slots, emitted) => {
+    let store = slots.map((start, i) => ({
+        id: i + 1,
+        ruleId: 1,
+        ruleUpdateCnt: 0,
+        programId: null,
+        isTimeSpecified: true,
+        channelId: 1,
+        channel: '23',
+        channelType: 'GR',
+        startAt: Date.parse(start),
+        endAt: Date.parse(start) + 2 * H,
+        isSkip: false,
+        isConflict: false,
+        isOverlap: false,
+        isIgnoreOverlap: false,
+        isEventRelay: false,
+        updateTime: 1,
+    }));
+    const model = createModel({
+        log: { system: { ...silentLog.system, debug: () => {} } },
+        ruleDB: {
+            findId: async () => ({
+                id: 1,
+                updateCnt: 0,
+                isTimeSpecification: true,
+                reserveOption: { enable: true, allowEndLack: true },
+                searchOption: {
+                    keyword: 'late show',
+                    channelIds: [1],
+                    times: [{ week: 0x20, start: 23 * 3600, range: 2 * 3600 }],
+                },
+            }),
+        },
+        channelDB: { findId: async () => ({ id: 1, channel: '23', channelType: 'GR' }) },
+        reserveDB: {
+            findRuleId: async () => store.map(r => ({ ...r })),
+            findTimeRanges: async () => [],
+            updateMany: async d => {
+                const gone = d.delete.map(r => r.id);
+                store = store.filter(r => !gone.includes(r.id));
+                for (const n of d.insert) store.push({ ...n, id: 100 + store.length });
+            },
+        },
+        reserveEvent: { emitUpdated: d => emitted.push(d) },
+    });
+    model.setTuners([{ name: 't0', types: ['GR'] }]);
+
+    return { model, getSlots: () => store.map(r => new Date(r.startAt).toISOString()).sort() };
+};
+
+test('a time-specified rule recording that crosses midnight is kept by the first rule update after midnight', async t => {
+    // Saturday 00:05, while the Friday 10-16 23:00-01:00 slot records
+    inJapanAt(t, '2026-10-17T00:05:00+09:00');
+    const emitted = [];
+    const { model, getSlots } = timeRuleModel(['2026-10-16T23:00:00+09:00', '2026-10-23T23:00:00+09:00'], emitted);
+
+    await model.updateRule(1, true);
+
+    assert.deepStrictEqual(diffIds(emitted[0]), { insert: [], update: [], delete: [] });
+    assert.deepStrictEqual(getSlots(), ['2026-10-16T14:00:00.000Z', '2026-10-23T14:00:00.000Z']);
+});
+
+test('a time-specified rule slot that has ended is not reserved again', async t => {
+    // Saturday 01:30: the Friday 10-16 slot ended at 01:00
+    inJapanAt(t, '2026-10-17T01:30:00+09:00');
+    const emitted = [];
+    const { model, getSlots } = timeRuleModel(['2026-10-23T23:00:00+09:00'], emitted);
+
+    await model.updateRule(1, true);
+
+    assert.deepStrictEqual(diffIds(emitted[0]), { insert: [], update: [], delete: [] });
+    assert.deepStrictEqual(getSlots(), ['2026-10-23T14:00:00.000Z']);
+});
+
+/**
+ * Keyword rule 1 whose search finds programs 601 and 602, and a manual reservation (7) of program 601, in a store
+ * that the updates change.
+ */
+const manualAndRuleModel = emitted => {
+    const now = Date.now();
+    const program = (id, startAt) => ({
+        id,
+        updateTime: 10,
+        channel: '23',
+        channelType: 'GR',
+        startAt,
+        endAt: startAt + H,
+        overlap: false,
+    });
+    const found = [program(601, now + H), program(602, now + 3 * H)];
+    let store = [
+        {
+            id: 7,
+            ruleId: null,
+            programId: 601,
+            programUpdateTime: 10,
+            updateTime: 5,
+            channel: '23',
+            channelType: 'GR',
+            startAt: now + H,
+            endAt: now + 2 * H,
+            isSkip: false,
+            isConflict: false,
+            isOverlap: false,
+            isTimeSpecified: false,
+            isEventRelay: false,
+        },
+    ];
+    const model = createModel({
+        log: { system: { ...silentLog.system, debug: () => {} } },
+        ruleDB: {
+            findId: async () => ({
+                id: 1,
+                updateCnt: 0,
+                isTimeSpecification: false,
+                reserveOption: { enable: true, allowEndLack: true },
+                searchOption: { keyword: 'x' },
+            }),
+        },
+        reserveDB: {
+            findRuleId: async () => store.filter(r => r.ruleId === 1).map(r => ({ ...r })),
+            findTimeRanges: async () => store.filter(r => r.ruleId !== 1).map(r => ({ ...r })),
+            updateMany: async d => {
+                const gone = d.delete.map(r => r.id);
+                store = store.filter(r => !gone.includes(r.id));
+                for (const n of d.insert) store.push({ ...n, id: 100 + store.length });
+            },
+        },
+        programDB: { findRule: async () => found },
+        recordingManageModel: { hasReserve: () => false },
+        reserveEvent: { emitUpdated: d => emitted.push(d) },
+    });
+    model.setTuners([{ name: 't0', types: ['GR'] }]);
+
+    return {
+        model,
+        cancelManual: () => (store = store.filter(r => r.id !== 7)),
+        getStore: () => store.map(r => [r.programId, r.ruleId]).sort(),
+    };
+};
+
+test('a rule does not reserve a program again that is already reserved manually', async () => {
+    const emitted = [];
+    const { model, getStore } = manualAndRuleModel(emitted);
+
+    await model.updateRule(1, true);
+
+    assert.deepStrictEqual(diffIds(emitted[0]), { insert: [602], update: [], delete: [] });
+    assert.deepStrictEqual(getStore(), [
+        [601, null],
+        [602, 1],
+    ]);
+});
+
+test('after the manual reservation is cancelled, the next rule update reserves the program', async () => {
+    const emitted = [];
+    const { model, cancelManual, getStore } = manualAndRuleModel(emitted);
+    await model.updateRule(1, true);
+
+    cancelManual();
+    await model.updateRule(1, true);
+
+    assert.deepStrictEqual(diffIds(emitted[1]), { insert: [601], update: [], delete: [] });
+    assert.deepStrictEqual(getStore(), [
+        [601, 1],
+        [602, 1],
+    ]);
+});
+
+test('a program that one rule skips is still reserved by another rule', () => {
+    const model = createModel({ log: { system: { ...silentLog.system, debug: () => {} } } });
+    model.setTuners([{ name: 't0', types: ['GR'] }]);
+    const T0 = Date.UTC(2026, 9, 11, 1);
+    const reserve = r => ({
+        programId: 701,
+        channel: '23',
+        channelType: 'GR',
+        startAt: T0,
+        endAt: T0 + H,
+        isSkip: false,
+        isOverlap: false,
+        isConflict: false,
+        isTimeSpecified: false,
+        updateTime: 1,
+        ...r,
+    });
+
+    const result = model.createReserves([reserve({ id: 1, ruleId: 1, isSkip: true }), reserve({ id: 2, ruleId: 2 })]);
+
+    assert.deepStrictEqual(
+        result.map(r => [r.id, r.isSkip, r.isConflict]),
+        [
+            [1, true, false],
+            [2, false, false],
+        ],
+    );
+});

@@ -795,7 +795,8 @@ class ReservationManageModel implements IReservationManageModel {
                         (time.week & 0x40) !== 0, // 土
                     ];
 
-                    for (let i = 0; i < 8; i++) {
+                    // 前日分 (i = -1) も作成する. 日付を跨いで録画中の枠を削除して録画を止めないため
+                    for (let i = -1; i < 8; i++) {
                         // 1 週間分の予約情報を作成する
                         const startAt = baseTime + 1000 * 60 * 60 * 24 * i + time.start * 1000;
                         const endAt = baseTime + 1000 * 60 * 60 * 24 * i + (time.start + time.range) * 1000;
@@ -1627,6 +1628,12 @@ class ReservationManageModel implements IReservationManageModel {
             const matchProgramIdKey = this.getRuleProgramIdKey(matches[i]);
 
             if (matchProgramIdKey !== null) {
+                // 手動予約済みの番組のルール予約は list に追加しない (同じ番組を二重に録画しないため.
+                // sortReserve により手動予約が先に並ぶ)
+                if (matches[i].ruleId !== null && typeof programIdIndex[`${matches[i].programId}`] !== 'undefined') {
+                    continue;
+                }
+
                 // programId がすでに存在する場合は list に追加しない
                 if (typeof programIdIndex[matchProgramIdKey] === 'undefined') {
                     programIdIndex[matchProgramIdKey] = true;
