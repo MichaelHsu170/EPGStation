@@ -318,3 +318,32 @@ test('search results: a refresh after the form is cleared or the page is opened 
         assert.strictEqual(state.getSearchResult(), null);
     }
 });
+
+// the edit page loads a rule saved for a whole genre (as the create page saves it when the genre header is clicked)
+const loadRule = genres => {
+    const state = Object.create(SearchState.prototype);
+    state.searchOption = { genres: {
+        1: { isEnable: false, subGenreIndex: { 0: false, 1: false, 2: false } },
+        2: { isEnable: false, subGenreIndex: { 0: false, 1: false } } }, week: {}, broadcastWave: { GR: {}, BS: {}, CS: {}, SKY: {} } };
+    state.setSearchOption({ genres, times: [{ week: 127 }] });
+    return state.searchOption.genres;
+};
+
+test('rule edit: a whole-genre rule shows every subgenre of that genre selected', () => {
+    const g = loadRule([{ genre: 1 }]);
+    assert.deepStrictEqual(g[1], { isEnable: true, subGenreIndex: { 0: true, 1: true, 2: true } });
+    assert.deepStrictEqual(g[2], { isEnable: false, subGenreIndex: { 0: false, 1: false } });
+});
+
+test('rule edit: a subgenre rule shows only that subgenre selected', () => {
+    const g = loadRule([{ genre: 1, subGenre: 1 }]);
+    assert.deepStrictEqual(g[1], { isEnable: false, subGenreIndex: { 0: false, 1: true, 2: false } });
+});
+
+test('rule edit: after loading a whole-genre rule, clicking one subgenre deselects only it', () => {
+    const state = Object.create(SearchState.prototype);
+    state.searchOption = { genres: { 1: { isEnable: false, subGenreIndex: { 0: false, 1: false, 2: false } } }, week: {}, broadcastWave: { GR: {}, BS: {}, CS: {}, SKY: {} } };
+    state.setSearchOption({ genres: [{ genre: 1 }], times: [{ week: 127 }] });
+    state.onClickSubGenre(1, 2);
+    assert.deepStrictEqual(state.searchOption.genres[1], { isEnable: false, subGenreIndex: { 0: true, 1: true, 2: false } });
+});

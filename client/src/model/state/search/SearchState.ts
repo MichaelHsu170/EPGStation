@@ -443,6 +443,10 @@ export default class SearchState implements ISearchState {
                 // tslint:disable-next-line:prefer-conditional-expression
                 if (typeof genre.subGenre === 'undefined') {
                     this.searchOption.genres[genre.genre].isEnable = true;
+                    // 検索画面でジャンルを選んだ時と同じく, そのジャンルのサブジャンルをすべて選択状態にする
+                    for (const subGenre in this.searchOption.genres[genre.genre].subGenreIndex) {
+                        this.searchOption.genres[genre.genre].subGenreIndex[subGenre] = true;
+                    }
                 } else {
                     this.searchOption.genres[genre.genre].isEnable = false;
                     this.searchOption.genres[genre.genre].subGenreIndex[genre.subGenre] = true;
