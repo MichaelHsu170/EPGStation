@@ -149,8 +149,17 @@ export default class RecordedStreamingVideo extends BaseVideo {
             return;
         }
 
-        // エンコード済み範囲か
-        if (time >= this.basePlayPosition && time <= this.basePlayPosition + super.getDuration()) {
+        // エンコード済み範囲か。実際にシークできる範囲かも見る (fragmented MP4 は読み込んだ長さを duration に返すが
+        // seekable は空で、シークすると同じ ss から読み直す)。できなければ ss を指定して読み直す
+        const seekable = this.video.seekable;
+        const relTime = time - this.basePlayPosition;
+        if (
+            time >= this.basePlayPosition &&
+            time <= this.basePlayPosition + super.getDuration() &&
+            seekable.length > 0 &&
+            relTime >= seekable.start(0) &&
+            relTime <= seekable.end(seekable.length - 1)
+        ) {
             super.setCurrentTime(time - this.basePlayPosition);
             this.onTimeupdate();
 
