@@ -91,7 +91,8 @@ export default class RecordedSearchMenu extends Vue {
             if (this.isNoRule === true) {
                 this.searchState.ruleId = 0;
                 searchQuery.ruleId = 0;
-            } else if (typeof this.searchState.ruleId !== 'undefined' && this.searchState.ruleId !== null) {
+            } else if (typeof this.searchState.ruleId !== 'undefined' && this.searchState.ruleId !== null && this.searchState.ruleId !== 0) {
+                // ruleId 0 は「手動録画のみ」が前回の検索から残ったもの (チェックを外したので送らない)
                 searchQuery.ruleId = this.searchState.ruleId;
             }
             if (typeof this.searchState.channelId !== 'undefined' && this.searchState.channelId !== null) {
