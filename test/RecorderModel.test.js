@@ -749,3 +749,178 @@ test('an event relay check at the end of a stream whose program lookup fails is 
     assert.deepStrictEqual(checks, [0]);
     assert.deepStrictEqual(unhandled, []);
 });
+
+/**
+ * A recorder of reservation 8 (on air) whose stream requests each get a stream with one packet of data. Its n-th
+ * recording file is `rec<n>.m2ts` in a temporary directory; the first `fullAttempts` of them are links to /dev/full,
+ * whose writes fail with ENOSPC like those to a full disk. The database fake keeps the recorded and video file rows
+ * (a recorded row with a video file row cannot be deleted, like the foreign key) and answers an insert only after the
+ * first write has completed or failed, as the local disk answers before the database.
+ */
+const createDiskFullModel = (t, fullAttempts) => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const { EventEmitter } = require('events');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'recorder-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    const streams = [];
+    const db = { recorded: [], videoFiles: [] };
+    const events = { started: [], finished: [], recordingFailed: [], prepFailed: [] };
+    let attempts = 0;
+    const model = Object.create(RecorderModel.prototype);
+    const firstWriteDone = async () => {
+        for (let i = 0; i < 5000 && !(model.recFile !== null && (model.recFile.closed || model.recFile.bytesWritten > 0)); i++) {
+            await new Promise(resolve => setImmediate(resolve));
+        }
+    };
+    Object.assign(model, {
+        log: silentLog,
+        config: { isEnabledDropCheck: false },
+        reserve: { id: 8, programId: null, isTimeSpecified: true, ruleId: null, isEventRelay: false, startAt: 0, endAt: 60 * 60 * 1000 },
+        recordedId: null,
+        videoFileId: null,
+        videoFileFulPath: null,
+        isStopPrepRec: false,
+        isPrepRecording: false,
+        isRecording: false,
+        isPlanToDelete: false,
+        isNeedDeleteReservation: true,
+        isCanceledCallingFinished: false,
+        stream: null,
+        recFile: null,
+        abortController: null,
+        dropLogFileId: null,
+        timerId: null,
+        eventRelayTimerId: null,
+        eventEmitter: new EventEmitter(),
+        streamCreator: {
+            create: async () => {
+                const stream = new PassThrough();
+                stream.write(Buffer.alloc(188, 0x47));
+                streams.push(stream);
+
+                return stream;
+            },
+        },
+        reserveDB: { findId: async () => ({ id: 8 }) },
+        recordingUtil: {
+            getRecPath: async () => {
+                attempts++;
+                const fileName = `rec${attempts}.m2ts`;
+                const fullPath = path.join(dir, fileName);
+                if (attempts <= fullAttempts) {
+                    fs.symlinkSync('/dev/full', fullPath);
+                }
+
+                return { parendDir: { name: 'recorded' }, subDir: '', fileName, fullPath };
+            },
+            updateVideoFileSize: async () => {},
+        },
+        createRecorded: async () => ({}),
+        recordedDB: {
+            insertOnce: async () => {
+                await firstWriteDone();
+                const id = 100 + attempts;
+                db.recorded.push(id);
+
+                return id;
+            },
+            deleteOnce: async id => {
+                if (db.videoFiles.some(v => v.recordedId === id)) {
+                    throw new Error('ER_ROW_IS_REFERENCED_2');
+                }
+                db.recorded = db.recorded.filter(r => r !== id);
+            },
+            removeRecording: async () => {},
+            findId: async id => (db.recorded.includes(id) ? { id } : null),
+        },
+        videoFileDB: {
+            insertOnce: async videoFile => {
+                db.videoFiles.push({ recordedId: videoFile.recordedId });
+
+                return 200 + db.videoFiles.length;
+            },
+            deleteRecordedId: async id => {
+                db.videoFiles = db.videoFiles.filter(v => v.recordedId !== id);
+            },
+        },
+        recordingEvent: {
+            emitStartPrepRecording: () => {},
+            emitStartRecording: (reserve, recorded) => events.started.push(recorded.id),
+            emitFinishRecording: (reserve, recorded, isNeedDeleteReservation) => events.finished.push([recorded.id, isNeedDeleteReservation]),
+            emitRecordingFailed: (reserve, recorded) => events.recordingFailed.push(recorded === null ? null : recorded.id),
+            emitPrepRecordingFailed: reserve => events.prepFailed.push(reserve.id),
+        },
+        dropChecker: { stop: async () => {} },
+    });
+    // lets the file and database work of the current attempt finish
+    const settle = async () => {
+        for (let i = 0; i < 50; i++) {
+            await new Promise(resolve => fs.stat(dir, () => resolve()));
+        }
+    };
+
+    return { model, streams, db, events, settle, files: () => fs.readdirSync(dir).sort(), read: name => fs.readFileSync(path.join(dir, name)) };
+};
+
+test('a recording whose first write fails on a full disk is retried by its recorder 5 s apart, then reported as failed, leaving nothing behind', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 60 * 1000 });
+    const { model, streams, db, events, settle, files } = createDiskFullModel(t, 4);
+
+    model.prepRecord();
+    await settle();
+    // one attempt at a time: no recording failure (which would start another recorder at once) and no second stream
+    assert.strictEqual(streams.length, 1);
+    assert.deepStrictEqual(events.recordingFailed, []);
+    for (let i = 0; i < 3; i++) {
+        t.mock.timers.tick(5 * 1000);
+        await settle();
+    }
+
+    assert.strictEqual(streams.length, 4);
+    assert.ok(streams.every(s => s.destroyed));
+    assert.deepStrictEqual(events, { started: [], finished: [], recordingFailed: [], prepFailed: [8] });
+    assert.deepStrictEqual(db, { recorded: [], videoFiles: [] });
+    assert.deepStrictEqual(files(), []);
+    t.mock.timers.tick(5 * 1000);
+    await settle();
+    assert.strictEqual(streams.length, 4);
+});
+
+test('a recording whose first write fails on a full disk records at the retry once there is space again', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 60 * 1000 });
+    const { model, streams, db, events, settle, files, read } = createDiskFullModel(t, 1);
+
+    model.prepRecord();
+    await settle();
+    t.mock.timers.tick(5 * 1000);
+    await settle();
+
+    assert.strictEqual(streams.length, 2);
+    assert.deepStrictEqual(events, { started: [102], finished: [], recordingFailed: [], prepFailed: [] });
+    assert.deepStrictEqual(db, { recorded: [102], videoFiles: [{ recordedId: 102 }] });
+    assert.deepStrictEqual(files(), ['rec2.m2ts']);
+    assert.deepStrictEqual(read('rec2.m2ts'), Buffer.alloc(188, 0x47));
+    model.destroyStream();
+});
+
+test('a write error after the recording started keeps what was recorded and reports the recording as failed', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 60 * 1000 });
+    const { model, streams, db, events, settle, files } = createDiskFullModel(t, 0);
+    model.prepRecord();
+    await settle();
+    assert.deepStrictEqual(events.started, [101]);
+
+    model.recFile.emit('error', Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' }));
+    await settle();
+    t.mock.timers.tick(5 * 1000);
+    await settle();
+
+    // the recording manager starts the next part on the failure; this recorder does not retry by itself
+    assert.strictEqual(streams.length, 1);
+    assert.deepStrictEqual(events, { started: [101], finished: [[101, false]], recordingFailed: [101], prepFailed: [] });
+    assert.deepStrictEqual(db.recorded, [101]);
+    assert.deepStrictEqual(files(), ['rec1.m2ts']);
+});

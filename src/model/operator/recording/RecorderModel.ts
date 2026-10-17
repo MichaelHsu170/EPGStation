@@ -336,6 +336,8 @@ class RecorderModel implements IRecorderModel {
         this.log.system.info(`recording: ${this.reserve.id} ${recPath.fullPath}`);
 
         // save stream
+        // 録画番組を登録して録画を開始したか (開始前の書き込みエラーは録画準備の失敗として prepRecord が再試行する)
+        let isStarted = false;
         this.recFile = fs.createWriteStream(recPath.fullPath, { flags: 'a' });
         this.recFile.once('error', async err => {
             // 書き込みエラー発生
@@ -343,6 +345,15 @@ class RecorderModel implements IRecorderModel {
             this.log.system.error(err);
             if (this.stream === null) {
                 this.cancel(false);
+            } else if (isStarted === false) {
+                // 最初の書き込みで失敗した (ディスクが一杯など). 録画失敗にすると即座に録画し直す別の録画と
+                // この録画準備の再試行が並行して増え続けるため、ストリームを閉じてファイルを消し、
+                // prepRecord の再試行 (5 秒おきに 3 回まで) だけに任せる (登録中の録画番組は onData が消す)
+                this.destroyStream();
+                await FileUtil.unlink(recPath.fullPath).catch(err => {
+                    this.log.system.error(`delete error: ${this.reserve.id} ${recPath.fullPath}`);
+                    this.log.system.error(err);
+                });
             } else {
                 this.isCanceledCallingFinished = true; // mirakurun の stream の終了処理を行わないようにセット
                 await this.recFailed(err).catch(err => {
@@ -436,8 +447,19 @@ class RecorderModel implements IRecorderModel {
 
                 // 終了処理セット
                 if (this.stream !== null) {
+                    isStarted = true;
                     this.setEndProcess(this.stream);
                 } else {
+                    // 登録中に最初の書き込みが失敗した. 再試行で録画番組が増えないよう、登録した行を消す
+                    // (addRecorded の失敗時と同じく、再試行は新しい id で登録させる)
+                    this.recordedId = null;
+                    await this.videoFileDB
+                        .deleteRecordedId(recorded.id)
+                        .then(() => this.recordedDB.deleteOnce(recorded.id))
+                        .catch(err => {
+                            this.log.system.error(`delete recorded error: ${recorded.id}`);
+                            this.log.system.error(err);
+                        });
                     reject(new Error('StreamIsNull'));
 
                     return;
