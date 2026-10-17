@@ -209,7 +209,9 @@ test('startup cleanup deletes the reservations that are over, except one whose r
  * change. Reservations: 1 is recording a program in an undetermined overrun whose row the old-program cleanup has
  * deleted; 2 is recording one whose row still says 1 ms; 3 is still recording just after the known end of its
  * program (its stream ends a few seconds later); 4 has
- * started but is not recording (skipped); 5 is a future reservation that is armed but whose program row is gone.
+ * started but is not recording (skipped); 5 is a future reservation that is armed but whose program row is gone;
+ * 6 is recording one whose row has just changed to 1 ms (updateTime 20) while the reservation still has the scheduled
+ * end (2 has already taken the 1 ms of its row's version).
  */
 const ruleUpdateModel = (search, emitted) => {
     const now = Date.now();
@@ -238,9 +240,11 @@ const ruleUpdateModel = (search, emitted) => {
         reserve(3, 503, now - H, now - 2000),
         reserve(4, 504, now - H, now - 10 * 60e3, { isSkip: true }),
         reserve(5, 505, now + H, now + 2 * H),
+        reserve(6, 506, now - H, now + 10 * 60e3),
     ];
     const rows = {
-        502: { id: 502, startAt: now - H, endAt: now - H + 1, duration: 1 },
+        502: { id: 502, updateTime: 10, channel: '23', channelType: 'GR', startAt: now - H, endAt: now - H + 1, duration: 1 },
+        506: { id: 506, updateTime: 20, channel: '23', channelType: 'GR', startAt: now - H, endAt: now - H + 1, duration: 1 },
         503: { id: 503, startAt: now - H, endAt: now - 2000, duration: H - 2000 },
     };
     const model = createModel({
@@ -265,7 +269,7 @@ const ruleUpdateModel = (search, emitted) => {
             },
         },
         programDB: { findRule: async () => search.found, findId: async id => rows[id] ?? null },
-        recordingManageModel: { hasReserve: id => [1, 2, 3, 5].includes(id) },
+        recordingManageModel: { hasReserve: id => [1, 2, 3, 5, 6].includes(id) },
         reserveEvent: { emitUpdated: d => emitted.push(d) },
     });
     model.setTuners([{ name: 't0', types: ['GR'] }]);
@@ -285,11 +289,32 @@ test('a rule update keeps a recording reservation whose program is in an undeter
 
     await model.updateRule(1, true);
 
-    // 1, 2 and 3 keep recording (3 until its stream ends a few seconds after the program); a skipped one (4) and
+    // 1, 2, 3 and 6 keep recording (3 until its stream ends a few seconds after the program); a skipped one (4) and
     // a future one whose program is gone (5) are deleted as before
-    assert.deepStrictEqual(diffIds(emitted[0]), { insert: [], update: [], delete: [4, 5] });
-    assert.deepStrictEqual(getStore().map(r => r.id), [1, 2, 3]);
+    assert.deepStrictEqual(diffIds(emitted[0]), { insert: [], update: [6], delete: [4, 5] });
+    assert.deepStrictEqual(getStore().map(r => r.id), [1, 2, 3, 6]);
     await assertLockReleased(model);
+});
+
+test('a kept rule reservation of a program in an undetermined overrun takes its 1 ms end, as a manual one does', async () => {
+    const emitted = [];
+    const { model, getStore } = ruleUpdateModel({ found: [] }, emitted);
+    const before = getStore().map(r => ({ ...r }));
+
+    await model.updateRule(1, true);
+
+    // 6 now counts as on air until its stream ends (resume after a restart, relay check at the stream end); the
+    // others keep their times: 1 (row gone) and 3 (a known end that has just passed) as they were
+    const ends = Object.fromEntries(getStore().map(r => [r.id, [r.startAt, r.endAt, r.programUpdateTime]]));
+    const old = Object.fromEntries(before.map(r => [r.id, [r.startAt, r.endAt, r.programUpdateTime]]));
+    assert.deepStrictEqual(ends[6], [old[6][0], old[6][0] + 1, 20]);
+    assert.deepStrictEqual(ends[1], old[1]);
+    assert.deepStrictEqual(ends[2], old[2]);
+    assert.deepStrictEqual(ends[3], old[3]);
+
+    // the next update finds nothing more to change
+    await model.updateRule(1, true);
+    assert.deepStrictEqual(diffIds(emitted[1]), { insert: [], update: [], delete: [] });
 });
 
 test('when the real end of the overrun arrives, the same rule reservation takes it', async () => {

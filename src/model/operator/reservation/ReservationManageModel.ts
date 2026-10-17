@@ -901,7 +901,13 @@ class ReservationManageModel implements IReservationManageModel {
                         this.log.system.error(`find program error: ${old.programId}`);
                         throw err;
                     });
-                    if (program === null || program.duration === 1 || program.endAt <= now) {
+                    if (program !== null && program.duration === 1) {
+                        // 手動予約の update() と同じく終了時刻未定 (1 ms) の番組の時刻を取り込み、
+                        // 予定の終了時刻を過ぎても放送中として扱わせる (再起動後の録画再開、ストリーム終了時のイベントリレー確認)
+                        const kept = Object.assign({}, old);
+                        this.setProgramToReserve(kept, program);
+                        newRuleReserves.push(kept);
+                    } else if (program === null || program.endAt <= now) {
                         newRuleReserves.push(old);
                     }
                 }
