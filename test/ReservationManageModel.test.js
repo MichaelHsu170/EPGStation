@@ -207,7 +207,8 @@ test('startup cleanup deletes the reservations that are over, except one whose r
 /**
  * Rule 1 (keyword search) whose search returns `search.found`, with the reservations in a store that the updates
  * change. Reservations: 1 is recording a program in an undetermined overrun whose row the old-program cleanup has
- * deleted; 2 is recording one whose row still says 1 ms; 3 is recording past the known end of its program; 4 has
+ * deleted; 2 is recording one whose row still says 1 ms; 3 is still recording just after the known end of its
+ * program (its stream ends a few seconds later); 4 has
  * started but is not recording (skipped); 5 is a future reservation that is armed but whose program row is gone.
  */
 const ruleUpdateModel = (search, emitted) => {
@@ -234,11 +235,14 @@ const ruleUpdateModel = (search, emitted) => {
     let store = [
         reserve(1, 501, now - H, now - 10 * 60e3),
         reserve(2, 502, now - H, now - H + 1),
-        reserve(3, 503, now - H, now - 60e3),
+        reserve(3, 503, now - H, now - 2000),
         reserve(4, 504, now - H, now - 10 * 60e3, { isSkip: true }),
         reserve(5, 505, now + H, now + 2 * H),
     ];
-    const rows = { 502: { id: 502, duration: 1 }, 503: { id: 503, duration: H - 60e3 } };
+    const rows = {
+        502: { id: 502, startAt: now - H, endAt: now - H + 1, duration: 1 },
+        503: { id: 503, startAt: now - H, endAt: now - 2000, duration: H - 2000 },
+    };
     const model = createModel({
         log: { system: { ...silentLog.system, debug: () => {} } },
         ruleDB: {
@@ -281,10 +285,10 @@ test('a rule update keeps a recording reservation whose program is in an undeter
 
     await model.updateRule(1, true);
 
-    // 1 and 2 keep recording; an ended program with a known end (3), a skipped one (4) and a future one whose
-    // program is gone (5) are deleted as before
-    assert.deepStrictEqual(diffIds(emitted[0]), { insert: [], update: [], delete: [3, 4, 5] });
-    assert.deepStrictEqual(getStore().map(r => r.id), [1, 2]);
+    // 1, 2 and 3 keep recording (3 until its stream ends a few seconds after the program); a skipped one (4) and
+    // a future one whose program is gone (5) are deleted as before
+    assert.deepStrictEqual(diffIds(emitted[0]), { insert: [], update: [], delete: [4, 5] });
+    assert.deepStrictEqual(getStore().map(r => r.id), [1, 2, 3]);
     await assertLockReleased(model);
 });
 

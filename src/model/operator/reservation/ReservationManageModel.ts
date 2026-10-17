@@ -885,6 +885,7 @@ class ReservationManageModel implements IReservationManageModel {
                 // その行も古い番組の削除で消える。手動予約と同じく実際の終了まで録画を続けるため、
                 // 番組の行が無いか終了時刻未定である録画中の予約は削除しない
                 // (実際の終了時刻が届くと検索に戻り、この予約が更新される)
+                // 終了時刻を過ぎてストリームの終了を待っている録画中の予約も、録画を途中で取り消さないため削除しない
                 const now = new Date().getTime();
                 for (const old of oldRuleReserves) {
                     if (
@@ -900,7 +901,7 @@ class ReservationManageModel implements IReservationManageModel {
                         this.log.system.error(`find program error: ${old.programId}`);
                         throw err;
                     });
-                    if (program === null || program.duration === 1) {
+                    if (program === null || program.duration === 1 || program.endAt <= now) {
                         newRuleReserves.push(old);
                     }
                 }
