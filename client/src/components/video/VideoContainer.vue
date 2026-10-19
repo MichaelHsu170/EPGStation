@@ -291,6 +291,14 @@ export default class VideoContainer extends Vue {
         this.isFirstPlay = true;
     }
 
+    // controls を隠すと slider は破棄され end / change が来ないので, slider の操作を終了したことにする
+    @Watch('isShowControl')
+    public onShowControlChanged(isShow: boolean): void {
+        if (isShow === false) {
+            this.isSliderHeld = false;
+        }
+    }
+
     /**
      * on keydown
      * @param event: KeyboardEvent

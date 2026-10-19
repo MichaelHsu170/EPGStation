@@ -55,6 +55,7 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
     private lastSeekTime: number = 0; // setCurrentTime 実行中に setCurrentTime が重ねて実行されたか確認するための変数
     private seekRetryCount: number = 0; // setCurrentTime でストリームの再開に失敗した回数
     private isDestroyed: boolean = false; // 画面を離れた後にストリームを開始しないためのフラグ
+    private isDroppingRestartPause: boolean = false; // ストリーム再開のための停止を通知しないか (再開後に video が再生を始めるまで)
 
     public created(): void {
         // socket.io イベント
@@ -302,11 +303,21 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
     }
 
     /**
+     * 再生イベント
+     * 再開したストリームの再生が始まった後の停止は再開のための停止ではないので通知する
+     */
+    protected onPlay(): void {
+        this.isDroppingRestartPause = false;
+        super.onPlay();
+    }
+
+    /**
      * 停止イベント
-     * シーク処理中は停止が要求されている場合だけ通知する (ストリーム再開のための停止で再生ボタンの表示を変えない)
+     * シーク処理中, 再開したストリームの再生が始まるまでは停止が要求されている場合だけ通知する
+     * (ストリーム再開のための停止で再生ボタンの表示を変えない)
      */
     protected onPause(): void {
-        if (this.dummyPlayPosition !== null && this.pauseStateBeforeCurrentTime === false) {
+        if (this.dummyPlayPosition !== null && this.isDroppingRestartPause === true && this.pauseStateBeforeCurrentTime === false) {
             return;
         }
 
@@ -349,6 +360,7 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
 
             const needsShowSubtitle = this.isShowingSubtitle();
             this.disabledSubtitle();
+            this.isDroppingRestartPause = true;
             this.unload();
             this.destoryHls();
             this.basePlayPosition = time;
