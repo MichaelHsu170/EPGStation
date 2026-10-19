@@ -264,6 +264,7 @@ export default class VideoContainer extends Vue {
     // seek 時に使用する一時変数
     private needsReplay: boolean | null = null;
     private lastSeekedTime: number = 0; // 最後に slider を seek した時刻
+    private isSliderHeld: boolean = false; // slider の操作中か (操作中は再生位置で slider の値を上書きしない)
 
     // 内部字幕状態
     // eslint-disable-next-line no-undef
@@ -398,7 +399,10 @@ export default class VideoContainer extends Vue {
     public onTimeupdate(): void {
         const duration = this.getVideoDuration();
         this.duration = duration;
-        this.currentTime = this.getVideoCurrentTime();
+        // slider の操作中は, 操作開始時の pause による timeupdate で選んだ位置が戻されないよう上書きしない
+        if (this.isSliderHeld === false) {
+            this.currentTime = this.getVideoCurrentTime();
+        }
         this.updateTimeStr();
         this.updateSubtitleState();
     }
@@ -526,6 +530,7 @@ export default class VideoContainer extends Vue {
 
     // 再生位置変更開始
     public startChangeCurrentPosition(): void {
+        this.isSliderHeld = true;
         if (typeof this.$refs.video === 'undefined') {
             return;
         }
@@ -540,6 +545,7 @@ export default class VideoContainer extends Vue {
 
     // 再生位置変更終了
     public async endChangeCurrentPosition(time: number): Promise<void> {
+        this.isSliderHeld = false;
         if (typeof this.$refs.video === 'undefined') {
             return;
         }
@@ -563,6 +569,7 @@ export default class VideoContainer extends Vue {
     // slider の操作終了.
     // タッチで値の変わらないタップ (つまみ付近) では click も change も来ないので, シークされなければ再生を再開する
     public async onSliderEnd(): Promise<void> {
+        this.isSliderHeld = false;
         const endTime = new Date().getTime();
         await Util.sleep(100); // マウスでは end の直後の click で change が来る
         if (typeof this.$refs.video === 'undefined' || this.needsReplay !== true || this.lastSeekedTime >= endTime) {

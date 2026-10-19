@@ -202,7 +202,9 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
             // hls.js 非対応
             this.setSrc(videoSrc);
             this.load();
-            this.play()
+            // シーク処理中は this.play() が記録だけするため, video を直接再生する (停止の要求は then で戻す)
+            super
+                .play()
                 .then(async () => {
                     if (this.video === null) {
                         return;
@@ -297,6 +299,18 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
      */
     public paused(): boolean {
         return this.dummyPlayPosition !== null ? this.pauseStateBeforeCurrentTime : super.paused();
+    }
+
+    /**
+     * 停止イベント
+     * シーク処理中は停止が要求されている場合だけ通知する (ストリーム再開のための停止で再生ボタンの表示を変えない)
+     */
+    protected onPause(): void {
+        if (this.dummyPlayPosition !== null && this.pauseStateBeforeCurrentTime === false) {
+            return;
+        }
+
+        super.onPause();
     }
 
     /**
