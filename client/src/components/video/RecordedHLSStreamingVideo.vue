@@ -47,7 +47,7 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
     private b24RenderState: IB24RenderState = container.get<IB24RenderState>('IB24RenderState');
     private basePlayPosition: number = 0;
     private dummyPlayPosition: number | null = null; // setCurrentTime が呼ばれている間に再生位置として返すダミー値
-    private pauseStateBeforeCurrentTime: boolean = false; // setCurrentTime が処理終了時に再生状態を復元するための値
+    private pauseStateBeforeCurrentTime: boolean = false; // setCurrentTime が処理終了時に再生状態を復元するための値 (play / pause で更新)
     private lastUpdatePauseState: number = 0; // 最後に pauseStateBeforeCurrentTime を更新した時間
     private updateDurationTimerId: number | undefined; // 録画中の番組の動画長を更新するためのタイマー
     private setCurrentTimeTimerId: number | undefined; // setCurrentTime を大量に呼び出さないようにするためのタイマー
@@ -208,6 +208,9 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
                         return;
                     }
                     this.video.currentTime = 0;
+                    if (this.pauseStateBeforeCurrentTime === true) {
+                        this.video.pause();
+                    }
                 })
                 .catch(async err => {
                     if (this.video === null) {
@@ -228,7 +231,10 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
                             return;
                         }
                         this.video.currentTime = 0;
-                        await this.video.play().catch(err => {});
+                        // シーク前 (またはシーク処理中の操作で) 停止していた場合は停止したままにする
+                        if (this.pauseStateBeforeCurrentTime === false) {
+                            await this.video.play().catch(err => {});
+                        }
                         this.video.currentTime = 0;
                     }, 100);
                 }
@@ -255,6 +261,42 @@ export default class RecordedHLSStreamingVideo extends BaseVideo {
         }
 
         return this.video === null ? 0 : this.basePlayPosition + super.getCurrentTime();
+    }
+
+    /**
+     * 動画再生
+     * 新しいストリームの開始時に再生するよう記録する. シーク処理中 (ストリーム再開待ち) は video が空なので記録だけする
+     */
+    public async play(): Promise<void> {
+        this.pauseStateBeforeCurrentTime = false;
+        if (this.dummyPlayPosition !== null) {
+            this.onPlay();
+
+            return;
+        }
+
+        await super.play();
+    }
+
+    /**
+     * 動画停止
+     * 新しいストリームの開始時に停止したままにするよう記録する
+     */
+    public pause(): void {
+        this.pauseStateBeforeCurrentTime = true;
+        if (this.dummyPlayPosition !== null) {
+            this.onPause();
+        }
+
+        super.pause();
+    }
+
+    /**
+     * 停止中か
+     * シーク処理中は新しいストリームの開始時の再生状態を返す
+     */
+    public paused(): boolean {
+        return this.dummyPlayPosition !== null ? this.pauseStateBeforeCurrentTime : super.paused();
     }
 
     /**

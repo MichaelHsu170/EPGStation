@@ -54,6 +54,7 @@
                                     track-color="grey"
                                     :disabled="duration === 0"
                                     v-on:start="startChangeCurrentPosition"
+                                    v-on:end="onSliderEnd"
                                     v-on:change="endChangeCurrentPosition"
                                     v-on:input="updateCurrentPosition"
                                 ></v-slider>
@@ -557,6 +558,21 @@ export default class VideoContainer extends Vue {
             });
         }
         this.needsReplay = null;
+    }
+
+    // slider の操作終了.
+    // タッチで値の変わらないタップ (つまみ付近) では click も change も来ないので, シークされなければ再生を再開する
+    public async onSliderEnd(): Promise<void> {
+        const endTime = new Date().getTime();
+        await Util.sleep(100); // マウスでは end の直後の click で change が来る
+        if (typeof this.$refs.video === 'undefined' || this.needsReplay !== true || this.lastSeekedTime >= endTime) {
+            return;
+        }
+
+        this.needsReplay = null;
+        await (this.$refs.video as BaseVideo).play().catch(err => {
+            console.error(err);
+        });
     }
 
     /**
