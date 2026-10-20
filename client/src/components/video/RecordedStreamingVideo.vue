@@ -152,6 +152,18 @@ export default class RecordedStreamingVideo extends BaseVideo {
     }
 
     /**
+     * 動画停止.
+     * 再生位置変更の読み直し待ちの間に停止を指示された場合は, 読み直し後も停止する
+     */
+    public pause(): void {
+        if (this.dummyPlayPosition !== null) {
+            this.pauseStateBeforeCurrentTime = true;
+        }
+
+        super.pause();
+    }
+
+    /**
      * 再生位置設定
      * @param time: number (秒)
      */
