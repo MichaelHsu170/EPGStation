@@ -197,6 +197,7 @@ export default class RecordedStreamingVideo extends BaseVideo {
 
         clearTimeout(this.setCurrentTimeTimerId);
         this.setCurrentTimeTimerId = setTimeout(async () => {
+            const timerId = this.setCurrentTimeTimerId;
             if (this.video === null) {
                 return;
             }
@@ -225,7 +226,10 @@ export default class RecordedStreamingVideo extends BaseVideo {
                     // console.error(err);
                 });
             }
-            this.dummyPlayPosition = null;
+            // 読み直しの再生開始を待つ間に次のシークが来ていれば, 読み直し待ちはそちらが終える
+            if (this.setCurrentTimeTimerId === timerId) {
+                this.dummyPlayPosition = null;
+            }
         }, 200);
     }
 }
