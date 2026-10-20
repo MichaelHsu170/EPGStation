@@ -265,6 +265,7 @@ export default class VideoContainer extends Vue {
     private needsReplay: boolean | null = null;
     private lastSeekedTime: number = 0; // 最後に slider を seek した時刻
     private isSliderHeld: boolean = false; // slider の操作中か (操作中は再生位置で slider の値を上書きしない)
+    private sliderStartCount: number = 0; // slider の操作を始めた回数 (シーク後の再開を後の操作に任せるか判定する)
 
     // 内部字幕状態
     // eslint-disable-next-line no-undef
@@ -539,6 +540,7 @@ export default class VideoContainer extends Vue {
     // 再生位置変更開始
     public startChangeCurrentPosition(): void {
         this.isSliderHeld = true;
+        this.sliderStartCount++;
         if (typeof this.$refs.video === 'undefined') {
             return;
         }
@@ -564,14 +566,20 @@ export default class VideoContainer extends Vue {
         // 内部の字幕表示状態と実際の状態を強制的に合わせる
         this.forceUpdateSubtitle();
 
-        // シーク前に再生中であれば再開
+        // シーク前に再生中であれば再開.
+        // 待つ間に次の slider 操作が始まった場合は, 再開はその操作の終了に任せる
+        const sliderStartCount = this.sliderStartCount;
         await Util.sleep(200);
-        if (this.needsReplay === true) {
+        if (this.sliderStartCount !== sliderStartCount) {
+            return;
+        }
+        const needsReplay = this.needsReplay;
+        this.needsReplay = null;
+        if (needsReplay === true) {
             await (this.$refs.video as BaseVideo).play().catch(err => {
                 console.error(err);
             });
         }
-        this.needsReplay = null;
     }
 
     // slider の操作終了.
