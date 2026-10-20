@@ -88,6 +88,11 @@ class StreamManageModel implements IStreamManageModel {
      * @return Promise<void>
      */
     public async stop(streamId: apid.StreamId, isForce: boolean = false): Promise<void> {
+        // 停止するのは呼び出し時にこの id だったストリーム. 実行権を待つ間にそのストリームが停止して
+        // 次に開始したストリームが同じ id を使っても, それは停止しない
+        // (停止時の exit イベントによる 2 回目の stop が, シークで開始した次のストリームを止めないように)
+        const stream = this.streams[streamId];
+
         // 実行権取得
         const exeId = await this.executeManagementModel.getExecution(
             isForce ? StreamManageModel.FOURCE_STOP_STREAM_PRIORITY : StreamManageModel.STOP_STREAM_PRIORITY,
@@ -96,7 +101,7 @@ class StreamManageModel implements IStreamManageModel {
             this.executeManagementModel.unLockExecution(exeId);
         };
 
-        if (typeof this.streams[streamId] === 'undefined') {
+        if (typeof this.streams[streamId] === 'undefined' || this.streams[streamId] !== stream) {
             finalize();
 
             return;
