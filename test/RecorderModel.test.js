@@ -924,3 +924,86 @@ test('a write error after the recording started keeps what was recorded and repo
     assert.deepStrictEqual(db.recorded, [101]);
     assert.deepStrictEqual(files(), ['rec1.m2ts']);
 });
+
+/**
+ * A recorder of a time-specified reservation of NHK G 21:59-23:00 whose start program (on air at 21:59) is no longer in
+ * the program table (the 10-minute cleanup deleted it after it ended), with a real RecordedDB on an in-memory database.
+ */
+const createTimeReserveModel = async t => {
+    const path = require('path');
+    const { DataSource } = require('typeorm');
+    const DBOperator = require('../dist/model/db/DBOperator').default;
+    const RecordedDB = require('../dist/model/db/RecordedDB').default;
+    const connection = new DataSource({
+        type: 'sqlite',
+        database: ':memory:',
+        entities: [path.join(__dirname, '..', 'dist', 'db', 'entities', '*.js')],
+        synchronize: true,
+        logging: false,
+    });
+    await connection.initialize();
+    t.after(() => connection.destroy());
+    const op = Object.assign(Object.create(DBOperator.prototype), { config: { dbtype: 'sqlite' }, connection });
+    const recordedDB = Object.assign(Object.create(RecordedDB.prototype), { op, promieRetry: { run: fn => fn() } });
+
+    const reserve = {
+        id: 1,
+        isTimeSpecified: true,
+        isSkip: false,
+        isOverlap: false,
+        ruleId: null,
+        programId: null,
+        channelId: 3273601024,
+        name: 'ドラマ枠',
+        halfWidthName: 'ドラマ枠',
+        startAt: 1792504740000,
+        endAt: 1792508400000,
+    };
+    const model = Object.create(RecorderModel.prototype);
+    Object.assign(model, {
+        log: silentLog,
+        reserve,
+        isRecording: true,
+        isPrepRecording: false,
+        recordedId: null,
+        dropLogFileId: null,
+        programDB: { findChannelIdAndTime: async () => null },
+        recordedDB,
+        videoFileDB: { insertOnce: async () => 1 },
+    });
+
+    return { model, reserve, recordedDB, connection };
+};
+
+test('editing a recording time reservation after its start program left the program table keeps the recording title', async t => {
+    const { model, reserve, recordedDB, connection } = await createTimeReserveModel(t);
+    await connection.query(
+        `INSERT INTO recorded (id, reserveId, channelId, isProtected, startAt, endAt, duration, name, halfWidthName, isRecording)
+         VALUES (9, 1, 3273601024, 0, 1792504740000, 1792508400000, 3660000, '【ドラマ１０】会社員（２）[解][字]', '【ドラマ10】会社員(2)[解][字]', 1)`,
+    );
+    model.recordedId = 9;
+
+    // the reservation's 編集 saved with H.264 encode turned on
+    await model.update({ ...reserve, encodeMode1: 'H.264', isDeleteOriginalAfterEncode: true }, false);
+    await flushIO();
+
+    const recorded = await recordedDB.findId(9);
+    assert.strictEqual(recorded.name, '【ドラマ１０】会社員（２）[解][字]');
+    assert.strictEqual(recorded.halfWidthName, '【ドラマ10】会社員(2)[解][字]');
+});
+
+test('a part of a time reservation that starts after its start program left the program table gets the reservation name', async t => {
+    const { model, recordedDB } = await createTimeReserveModel(t);
+
+    // resume after a restart: a new recorded row for the same reservation
+    const recorded = await model.addRecorded({
+        parendDir: { name: 'recorded' },
+        subDir: '',
+        fileName: 'part.m2ts',
+        fullPath: '/nonexistent/part.m2ts',
+    });
+
+    const stored = await recordedDB.findId(recorded.id);
+    assert.strictEqual(stored.name, 'ドラマ枠');
+    assert.strictEqual(stored.halfWidthName, 'ドラマ枠');
+});

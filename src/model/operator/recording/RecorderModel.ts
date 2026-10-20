@@ -622,8 +622,12 @@ class RecorderModel implements IRecorderModel {
                 this.log.system.warn(
                     `get program info warn channelId: ${this.reserve.channelId}, startAt: ${this.reserve.startAt}`,
                 );
-                recorded.name = '';
-                recorded.halfWidthName = '';
+                // (開始時の番組が古い番組の削除で消えた後など) 録画中の更新では保存済みの番組名を残し
+                // (undefined の項目は更新されない)、新規登録 (再開した録画など) では予約名を使う
+                if (this.recordedId === null) {
+                    recorded.name = this.reserve.name;
+                    recorded.halfWidthName = this.reserve.halfWidthName;
+                }
             } else {
                 recorded.name = program.name;
                 recorded.halfWidthName = program.halfWidthName;

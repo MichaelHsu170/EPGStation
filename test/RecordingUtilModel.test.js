@@ -66,3 +66,35 @@ test('program and channel names are put into file names literally, even with $& 
         'Price $& more|half $`|Ch $1',
     );
 });
+
+const timeReserve = name => {
+    const Reserve = require('../dist/db/entities/Reserve').default;
+
+    return Object.assign(new Reserve(), {
+        id: 4,
+        name,
+        halfWidthName: name,
+        channelId: 1,
+        channelType: 'GR',
+        channel: '27',
+        startAt: 0,
+        isTimeSpecified: true,
+    });
+};
+
+const timeReserveModel = () => {
+    const model = Object.create(RecordingUtilModel.prototype);
+    model.log = { system: { warn: () => {} } };
+    model.channelDB = { findId: async () => null };
+    model.programDB = { findChannelIdAndTime: async () => null }; // the start program is not in the program table
+
+    return model;
+};
+
+test('a time reservation whose start program is not in the program table is named after the reservation', async () => {
+    assert.strictEqual(await timeReserveModel().formatFilePathString('%TITLE%', timeReserve('ドラマ枠')), 'ドラマ枠');
+});
+
+test('a time reservation without a name whose start program is not in the program table is named 番組名なし', async () => {
+    assert.strictEqual(await timeReserveModel().formatFilePathString('%TITLE%', timeReserve('')), '番組名なし');
+});
