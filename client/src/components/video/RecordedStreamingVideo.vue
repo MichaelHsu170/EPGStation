@@ -17,6 +17,9 @@ interface VideoSrcInfo {
     playPosition: number;
 }
 
+// 開始に失敗したストリームを読み直す回数
+const MAX_STREAM_RETRY = 3;
+
 @Component({})
 export default class RecordedStreamingVideo extends BaseVideo {
     @Prop({ required: true })
@@ -44,6 +47,10 @@ export default class RecordedStreamingVideo extends BaseVideo {
     private updateDurationTimerId: number | undefined; // 録画中の番組の動画長を更新するためのタイマー
     private setCurrentTimeTimerId: number | undefined; // setCurrentTime を大量に呼び出さないようにするためのタイマー
     private isDestroyed: boolean = false; // 画面を離れた後に再生を開始しないためのフラグ
+    private isPauseRequested: boolean = false; // 最後に指示された再生状態 (開始に失敗したストリームの読み直しで使う)
+    private hasStreamData: boolean = false; // 最後の読み込みからデータを受け取ったか (loadeddata)
+    private streamRetryCount: number = 0; // 開始に失敗したストリームを同じ位置で読み直した回数
+    private streamRetryTimerId: number | undefined; // 開始に失敗したストリームを読み直すタイマー
 
     public created(): void {
         // socket.io イベント
@@ -60,6 +67,13 @@ export default class RecordedStreamingVideo extends BaseVideo {
         }
 
         super.mounted();
+
+        if (this.video !== null) {
+            this.video.addEventListener('loadeddata', () => {
+                this.hasStreamData = true;
+            });
+            this.video.addEventListener('error', this.onStreamError.bind(this));
+        }
 
         // 録画中の場合は duration が変化するので定期的に timeupdate を発行する
         if (this.videoState.isRecording() === true) {
@@ -93,6 +107,7 @@ export default class RecordedStreamingVideo extends BaseVideo {
 
         clearInterval(this.updateDurationTimerId);
         clearTimeout(this.setCurrentTimeTimerId);
+        clearTimeout(this.streamRetryTimerId);
 
         super.beforeDestroy();
     }
@@ -109,7 +124,37 @@ export default class RecordedStreamingVideo extends BaseVideo {
                 playPosition: this.basePlayPosition,
             }),
         );
+        this.hasStreamData = false;
         this.load();
+    }
+
+    /**
+     * ストリームの開始に失敗した場合 (直前のシークのストリームがまだ止まっておらず同時エンコード数を超えた等) は,
+     * 少し待ってから同じ位置で読み直し, 最後に指示された再生状態にする.
+     * 再生が始まった後のエラーは読み直さない (読み込み開始位置へ戻ってしまうため)
+     */
+    private onStreamError(): void {
+        if (this.video === null || this.isDestroyed === true || this.hasStreamData === true || this.streamRetryCount >= MAX_STREAM_RETRY) {
+            return;
+        }
+        this.streamRetryCount++;
+
+        clearTimeout(this.streamRetryTimerId);
+        this.streamRetryTimerId = setTimeout(async () => {
+            // 待つ間にシークされた, または既に読み直した場合は何もしない
+            if (this.video === null || this.isDestroyed === true || this.dummyPlayPosition !== null || this.video.error === null) {
+                return;
+            }
+
+            const playbackRate = this.video.playbackRate;
+            this.initVideoSetting();
+            this.video.playbackRate = playbackRate;
+            if (this.isPauseRequested === true) {
+                this.pause();
+            } else {
+                await this.play().catch(() => {});
+            }
+        }, 1000);
     }
 
     /**
@@ -144,6 +189,7 @@ export default class RecordedStreamingVideo extends BaseVideo {
      * 再生位置変更の読み直し待ちの間に再生を指示された場合は, 読み直し後も再生する
      */
     public async play(): Promise<void> {
+        this.isPauseRequested = false;
         if (this.dummyPlayPosition !== null) {
             this.pauseStateBeforeCurrentTime = false;
         }
@@ -156,6 +202,7 @@ export default class RecordedStreamingVideo extends BaseVideo {
      * 再生位置変更の読み直し待ちの間に停止を指示された場合は, 読み直し後も停止する
      */
     public pause(): void {
+        this.isPauseRequested = true;
         if (this.dummyPlayPosition !== null) {
             this.pauseStateBeforeCurrentTime = true;
         }
@@ -189,13 +236,15 @@ export default class RecordedStreamingVideo extends BaseVideo {
             return;
         }
 
+        // 開始に失敗したストリームは止まっているので, 最後に指示された状態にする
         if (this.dummyPlayPosition === null) {
-            this.pauseStateBeforeCurrentTime = this.paused();
+            this.pauseStateBeforeCurrentTime = this.video.error !== null && this.hasStreamData === false ? this.isPauseRequested : this.paused();
         }
         this.dummyPlayPosition = time;
         this.onTimeupdate();
 
         clearTimeout(this.setCurrentTimeTimerId);
+        clearTimeout(this.streamRetryTimerId);
         this.setCurrentTimeTimerId = setTimeout(async () => {
             const timerId = this.setCurrentTimeTimerId;
             if (this.video === null) {
@@ -206,6 +255,8 @@ export default class RecordedStreamingVideo extends BaseVideo {
 
             this.unload();
             this.basePlayPosition = time;
+            this.hasStreamData = false;
+            this.streamRetryCount = 0;
             this.onWaiting();
             this.onPause();
             this.setSrc(
