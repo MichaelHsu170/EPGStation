@@ -721,6 +721,20 @@ class RecorderModel implements IRecorderModel {
         }
 
         if (this.recordedId !== null) {
+            // 終了時刻未定 (1 ms) のまま終わった録画は止まった時刻を終了時刻として保存する
+            // (エンコードのタイムアウトは duration から決まるため)。予約の終了時刻は変えない
+            if (isUndeterminedEnd(this.reserve) === true) {
+                const ended = new Recorded();
+                ended.id = this.recordedId;
+                ended.endAt = new Date().getTime();
+                ended.duration = ended.endAt - this.reserve.startAt;
+                this.log.system.info(`set undetermined recorded end: ${this.recordedId}, ${ended.endAt}`);
+                await this.recordedDB.updateOnce(ended).catch(err => {
+                    this.log.system.error(`update recorded end error: ${this.recordedId}`);
+                    this.log.system.error(err);
+                });
+            }
+
             // remove recording flag
             this.log.system.info(`remove recording flag: ${this.recordedId}`);
             // 失敗しても以降の終了処理 (終了イベント, エンコード) は行う. フラグは起動時の recordings cleanup で消える

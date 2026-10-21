@@ -926,10 +926,9 @@ test('a write error after the recording started keeps what was recorded and repo
 });
 
 /**
- * A recorder of a time-specified reservation of NHK G 21:59-23:00 whose start program (on air at 21:59) is no longer in
- * the program table (the 10-minute cleanup deleted it after it ended), with a real RecordedDB on an in-memory database.
+ * A real RecordedDB on an in-memory database
  */
-const createTimeReserveModel = async t => {
+const createRecordedDB = async t => {
     const path = require('path');
     const { DataSource } = require('typeorm');
     const DBOperator = require('../dist/model/db/DBOperator').default;
@@ -946,6 +945,15 @@ const createTimeReserveModel = async t => {
     const op = Object.assign(Object.create(DBOperator.prototype), { config: { dbtype: 'sqlite' }, connection });
     const recordedDB = Object.assign(Object.create(RecordedDB.prototype), { op, promieRetry: { run: fn => fn() } });
 
+    return { recordedDB, connection };
+};
+
+/**
+ * A recorder of a time-specified reservation of NHK G 21:59-23:00 whose start program (on air at 21:59) is no longer in
+ * the program table (the 10-minute cleanup deleted it after it ended), with a real RecordedDB on an in-memory database.
+ */
+const createTimeReserveModel = async t => {
+    const { recordedDB, connection } = await createRecordedDB(t);
     const reserve = {
         id: 1,
         isTimeSpecified: true,
@@ -1006,4 +1014,95 @@ test('a part of a time reservation that starts after its start program left the 
     const stored = await recordedDB.findId(recorded.id);
     assert.strictEqual(stored.name, 'ドラマ枠');
     assert.strictEqual(stored.halfWidthName, 'ドラマ枠');
+});
+
+/**
+ * A recorder of a program reservation of a sports broadcast on NHK G that started at 19:00 (recordedId 7, recording,
+ * with a real RecordedDB on an in-memory database). endAt 19:00:00.001 is the undetermined end of an overrun.
+ */
+const PROGRAM_START = 1792576800000; // 2026-10-21 19:00 JST
+const createProgramReserveModel = async (t, endAt) => {
+    const { recordedDB, connection } = await createRecordedDB(t);
+    await connection.query(
+        `INSERT INTO recorded (id, reserveId, programId, channelId, isProtected, startAt, endAt, duration, name, halfWidthName, isRecording)
+         VALUES (7, 1, 327360102400123, 3273601024, 0, ${PROGRAM_START}, ${endAt}, ${endAt - PROGRAM_START}, 'プロ野球', 'プロ野球', 1)`,
+    );
+    const reserve = {
+        id: 1,
+        isTimeSpecified: false,
+        isSkip: false,
+        isOverlap: false,
+        isEventRelay: false,
+        ruleId: null,
+        programId: 327360102400123,
+        channelId: 3273601024,
+        name: 'プロ野球',
+        halfWidthName: 'プロ野球',
+        startAt: PROGRAM_START,
+        endAt,
+    };
+    const events = { finished: [], failed: [] };
+    const model = Object.create(RecorderModel.prototype);
+    Object.assign(model, {
+        log: silentLog,
+        config: {},
+        reserve,
+        stream: null,
+        recFile: null,
+        eventRelayTimerId: null,
+        isEventRelayChecked: true,
+        isPlanToDelete: false,
+        isRecording: true,
+        isNeedDeleteReservation: true,
+        recordedId: 7,
+        videoFileId: null,
+        videoFileFulPath: null,
+        dropLogFileId: null,
+        recordedDB,
+        recordingEvent: {
+            emitFinishRecording: (r, recorded) => events.finished.push([recorded.endAt, recorded.duration]),
+            emitRecordingFailed: (r, recorded) => events.failed.push([recorded.endAt, recorded.duration]),
+        },
+    });
+
+    return { model, reserve, recordedDB, events };
+};
+
+test('a part of a recording in an undetermined overrun that stops early (restart, stream reset, write error) gets the time it stopped as its end', async t => {
+    const { model, reserve, recordedDB, events } = await createProgramReserveModel(t, PROGRAM_START + 1);
+    t.mock.timers.enable({ apis: ['Date'], now: PROGRAM_START + 2 * 60 * 60 * 1000 + 754 * 1000 }); // 21:12:34
+
+    await model.recFailed(new Error('aborted'));
+
+    const stored = await recordedDB.findId(7);
+    assert.strictEqual(stored.endAt, 1792584754000);
+    assert.strictEqual(stored.duration, 7954000);
+    assert.strictEqual(stored.isRecording, false);
+    assert.strictEqual(stored.name, 'プロ野球'); // the other columns are kept
+    assert.deepStrictEqual(events, { finished: [[1792584754000, 7954000]], failed: [[1792584754000, 7954000]] });
+    assert.strictEqual(reserve.endAt, PROGRAM_START + 1); // the reservation still holds the undetermined end
+});
+
+test('the last part of a recording whose broadcast ends while its end is still undetermined gets the time it stopped as its end', async t => {
+    const { model, recordedDB, events } = await createProgramReserveModel(t, PROGRAM_START + 1);
+    t.mock.timers.enable({ apis: ['Date'], now: PROGRAM_START + 3 * 60 * 60 * 1000 + 5 * 1000 }); // 22:00:05
+
+    await model.recEnd();
+
+    const stored = await recordedDB.findId(7);
+    assert.strictEqual(stored.endAt, 1792587605000);
+    assert.strictEqual(stored.duration, 10805000);
+    assert.deepStrictEqual(events.finished, [[1792587605000, 10805000]]);
+});
+
+test('a part of a recording with a known end keeps that end when it stops early', async t => {
+    const { model, recordedDB, events } = await createProgramReserveModel(t, PROGRAM_START + 3 * 60 * 60 * 1000); // 22:00
+    t.mock.timers.enable({ apis: ['Date'], now: PROGRAM_START + 60 * 60 * 1000 }); // 20:00
+
+    await model.recFailed(new Error('aborted'));
+
+    const stored = await recordedDB.findId(7);
+    assert.strictEqual(stored.endAt, 1792587600000);
+    assert.strictEqual(stored.duration, 10800000);
+    assert.deepStrictEqual(events.finished, [[1792587600000, 10800000]]);
 });

@@ -1,6 +1,7 @@
 import { inject, injectable } from 'inversify';
 import * as apid from '../../../../api';
 import * as mapid from '../../../../node_modules/mirakurun/api';
+import Recorded from '../../../db/entities/Recorded';
 import IRecordedDB from '../../db/IRecordedDB';
 import IReserveDB from '../../db/IReserveDB';
 import IRecordingEvent from '../../event/IRecordingEvent';
@@ -9,7 +10,7 @@ import IConfigFile from '../../IConfigFile';
 import IConfiguration from '../../IConfiguration';
 import ILogger from '../../ILogger';
 import ILoggerModel from '../../ILoggerModel';
-import IRecorderModel, { isReserveOnAir, RecorderModelProvider } from './IRecorderModel';
+import IRecorderModel, { isReserveOnAir, isUndeterminedEnd, RecorderModelProvider } from './IRecorderModel';
 import IRecordingManageModel from './IRecordingManageModel';
 import IRecordingStreamCreator from './IRecordingStreamCreator';
 import IRecordingUtilModel from './IRecordingUtilModel';
@@ -179,6 +180,20 @@ class RecordingManageModel implements IRecordingManageModel {
 
             // 番組がまだ放送中 (終了時刻未定を含む) なら予約は削除せずに残す
             const isOnAir = isReserveOnAir(reserve, new Date().getTime());
+
+            // 終了時刻未定 (1 ms) の番組の録画は再起動した時刻を終了時刻として保存する
+            // (エンコードのタイムアウトは duration から決まるため)。予約の終了時刻は変えない
+            if (isUndeterminedEnd(reserve) === true) {
+                const ended = new Recorded();
+                ended.id = r.id;
+                ended.endAt = new Date().getTime();
+                ended.duration = ended.endAt - r.startAt;
+                this.log.system.info(`set undetermined recorded end: ${r.id}, ${ended.endAt}`);
+                await this.recordedDB.updateOnce(ended).catch(err => {
+                    this.log.system.error(`update recorded end error: ${r.id}`);
+                    this.log.system.error(err);
+                });
+            }
 
             // 終了処理
             const newRecorded = await this.recordedDB.findId(r.id);
