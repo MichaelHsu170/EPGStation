@@ -1,7 +1,7 @@
 # ベースイメージはダイジェストで固定する。タグのままだと upstream の更新のたびにキャッシュが効かず、
 # ffmpeg の再ビルドに 1 時間以上かかる。更新するときはこの 2 行を新しいダイジェストに書き換える
-ARG NODE_IMAGE=node:24-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0
-ARG NODE_SLIM_IMAGE=node:24-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
+ARG NODE_IMAGE=node:24-bookworm@sha256:6449e19d8184d84062525b6a7524def03146c2cb04a7f08b076680d0e8e4240a
+ARG NODE_SLIM_IMAGE=node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
 
 # クライアントはプラットフォーム依存のコードを含まないため、BUILDPLATFORMでビルドした結果を
 # 全てのTARGETPLATFORMで再利用できる。これによりビルド時間を短縮できる。
